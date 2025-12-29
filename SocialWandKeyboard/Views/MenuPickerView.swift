@@ -92,7 +92,7 @@ struct MenuPickerView: View {
         .padding(.horizontal, metrics.horizontalPadding)
         .padding(.top, 16)
         .padding(.bottom, 12)
-        .background(backgroundColor.opacity(0.95))
+        .background(backgroundColor.opacity(0.95) as Color)
     }
     
     private func handleMenuTap(_ option: MenuOption) {

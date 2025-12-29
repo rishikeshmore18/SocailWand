@@ -1,5 +1,9 @@
 import SwiftUI
 
+enum ToolbarButtonType {
+    case upload, tone, length, gen, menu
+}
+
 struct WandToolbar: View {
     let onWandTap: () -> Void
     let onToneButtonTap: () -> Void
@@ -11,6 +15,7 @@ struct WandToolbar: View {
     @State private var isExpanded = false
     @State private var isLastButtonVisible = false
     @State private var lastVisibleButtonIndex: Int = -1
+    @State private var activeButton: ToolbarButtonType? = nil
     
     init(onWandTap: @escaping () -> Void, onToneButtonTap: @escaping () -> Void, onLengthButtonTap: @escaping () -> Void, onUploadButtonTap: @escaping () -> Void, onMenuButtonTap: @escaping () -> Void, isSuggestionsVisible: @escaping () -> Bool, onCloseSuggestions: (() -> Void)?) {
         self.onWandTap = onWandTap
@@ -43,6 +48,7 @@ struct WandToolbar: View {
                             ToolbarButton(
                                 icon: button.icon,
                                 label: button.label,
+                                isActive: activeButton == button.type,
                                 action: {
                                     triggerHaptic()
                                     button.action()
@@ -93,16 +99,28 @@ struct WandToolbar: View {
                 isExpanded = true
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SetActiveButton"))) { notification in
+            if let buttonType = notification.userInfo?["buttonType"] as? ToolbarButtonType {
+                setActiveButton(buttonType)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ClearActiveButton"))) { notification in
+            if let buttonType = notification.userInfo?["buttonType"] as? ToolbarButtonType {
+                if activeButton == buttonType {
+                    clearActiveButton()
+                }
+            }
+        }
     }
     
     // Toolbar button definitions
-    private var toolbarButtons: [(icon: String, label: String, action: () -> Void)] {
+    private var toolbarButtons: [(icon: String, label: String, type: ToolbarButtonType, action: () -> Void)] {
         return [
-            ("photo.on.rectangle", "Upload", onUploadButtonTap),  // ✅ WIRED UP
-            ("waveform", "Tone", onToneButtonTap),
-            ("text.alignleft", "Length", onLengthButtonTap),  // ✅ WIRED UP
-            ("arrow.clockwise", "Gen", onWandTap),
-            ("chevron.down", "Menu", onMenuButtonTap)  // ✅ NEW: 5th button
+            ("photo.on.rectangle", "Upload", .upload, onUploadButtonTap),
+            ("waveform", "Tone", .tone, onToneButtonTap),
+            ("text.alignleft", "Length", .length, onLengthButtonTap),
+            ("arrow.clockwise", "Gen", .gen, onWandTap),
+            ("chevron.down", "Menu", .menu, onMenuButtonTap)
         ]
     }
     
@@ -170,6 +188,23 @@ struct WandToolbar: View {
         let generator = UIImpactFeedbackGenerator(style: .rigid)
         generator.impactOccurred()
     }
+    
+    // State management functions
+    func setActiveButton(_ buttonType: ToolbarButtonType) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+            activeButton = buttonType
+        }
+    }
+    
+    func clearActiveButton() {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+            activeButton = nil
+        }
+    }
+    
+    func isButtonActive(_ buttonType: ToolbarButtonType) -> Bool {
+        return activeButton == buttonType
+    }
 }
 
 // Preference key for tracking button visibility
@@ -190,11 +225,19 @@ struct ButtonVisibilityPreferenceKey: PreferenceKey {
 struct ToolbarButton: View {
     let icon: String
     let label: String
+    let isActive: Bool
     let action: () -> Void
     @Environment(\.colorScheme) var colorScheme
+    @State private var isPressed = false
     
     var body: some View {
-        Button(action: action) {
+        Button(action: {
+            isPressed = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                isPressed = false
+            }
+            action()
+        }) {
             HStack(spacing: 5) {
                 Image(systemName: icon)
                     .font(.system(size: 13, weight: .semibold))
@@ -205,8 +248,22 @@ struct ToolbarButton: View {
             .foregroundColor(textColor)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(buttonBackgroundColor)
+            .background(
+                isActive
+                    ? Color(hex: "8B5CF6").opacity(0.2)
+                    : buttonBackgroundColor
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(
+                        isActive ? Color(hex: "8B5CF6") : Color.clear,
+                        lineWidth: 2
+                    )
+            )
             .cornerRadius(8)
+            .scaleEffect(isPressed ? 0.95 : (isActive ? 1.05 : 1.0))
+            .animation(.spring(response: 0.3, dampingFraction: 0.75), value: isActive)
+            .animation(.easeInOut(duration: 0.1), value: isPressed)
         }
         .buttonStyle(PlainButtonStyle())
     }

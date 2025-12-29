@@ -323,6 +323,17 @@ final class KeyboardViewController: KeyboardInputViewController {
         }
     }
     
+    // MARK: - Toolbar Button State Management
+    
+    private func updateToolbarButtonState(_ buttonType: ToolbarButtonType, isActive: Bool) {
+        let notificationName = isActive ? "SetActiveButton" : "ClearActiveButton"
+        NotificationCenter.default.post(
+            name: NSNotification.Name(notificationName),
+            object: nil,
+            userInfo: ["buttonType": buttonType]
+        )
+    }
+    
     // Retry the last failed operation
     private func retryLastOperation() {
         guard let lastOp = suggestionsViewModel.lastOperation else {
@@ -656,8 +667,18 @@ final class KeyboardViewController: KeyboardInputViewController {
     
     private func handleToneButtonTap() {
         print("🎨 Tone button tapped")
-        _ = refreshCurrentTextForPickers()
-        showTonePicker()
+        
+        // Toggle logic
+        if tonePickerHosting != nil {
+            // Already open - close it
+            hideTonePicker()
+            updateToolbarButtonState(.tone, isActive: false)
+        } else {
+            // Closed - open it
+            _ = refreshCurrentTextForPickers()
+            showTonePicker()
+            updateToolbarButtonState(.tone, isActive: true)
+        }
     }
     
     private func showTonePicker() {
@@ -731,6 +752,7 @@ final class KeyboardViewController: KeyboardInputViewController {
         // CRITICAL: Only clear state if NOT restoring
         if !isRestoringPicker {
             lastVisiblePicker = .none
+            updateToolbarButtonState(.tone, isActive: false)
         }
         
         hosting.willMove(toParent: nil)
@@ -844,7 +866,17 @@ final class KeyboardViewController: KeyboardInputViewController {
     
     private func handleLengthButtonTap() {
         print("📏 Length button tapped")
-        showLengthPicker()
+        
+        // Toggle logic
+        if lengthPickerHosting != nil {
+            // Already open - close it
+            hideLengthPicker()
+            updateToolbarButtonState(.length, isActive: false)
+        } else {
+            // Closed - open it
+            showLengthPicker()
+            updateToolbarButtonState(.length, isActive: true)
+        }
     }
     
     private func showLengthPicker() {
@@ -919,6 +951,7 @@ final class KeyboardViewController: KeyboardInputViewController {
         
         if !isRestoringPicker {
             lastVisiblePicker = .none
+            updateToolbarButtonState(.length, isActive: false)
         }
         
         hosting.willMove(toParent: nil as UIViewController?)
@@ -1100,7 +1133,17 @@ final class KeyboardViewController: KeyboardInputViewController {
     
     private func handleMenuButtonTap() {
         print("📋 Menu button tapped")
-        showMenuPicker()
+        
+        // Toggle logic
+        if menuPickerHosting != nil {
+            // Already open - close it
+            hideMenuPicker()
+            updateToolbarButtonState(.menu, isActive: false)
+        } else {
+            // Closed - open it
+            showMenuPicker()
+            updateToolbarButtonState(.menu, isActive: true)
+        }
     }
     
     private func showMenuPicker() {
@@ -1159,6 +1202,7 @@ final class KeyboardViewController: KeyboardInputViewController {
         
         if !isRestoringPicker {
             lastVisiblePicker = .none
+            updateToolbarButtonState(.menu, isActive: false)
         }
         
         hosting.willMove(toParent: nil)
@@ -1345,9 +1389,16 @@ final class KeyboardViewController: KeyboardInputViewController {
     private func handleUploadButtonTap() {
         print("🔵 Upload button tapped!")
         
+        // Set active state for visual feedback
+        updateToolbarButtonState(.upload, isActive: true)
+        
         guard hasFullAccess else {
             print("⚠️ No Full Access - showing alert")
             showFullAccessAlert()
+            // Clear active state if access denied
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.updateToolbarButtonState(.upload, isActive: false)
+            }
             return
         }
         
@@ -1426,10 +1477,18 @@ final class KeyboardViewController: KeyboardInputViewController {
         if didOpen {
             print("✅ SUCCESS - App opening via responder chain with MODERN API!")
             print("📝 Keyboard will be killed by iOS - main app will handle photo selection")
+            // Clear active state after a short delay (app will open)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.updateToolbarButtonState(.upload, isActive: false)
+            }
         } else {
             print("❌ FAILED - Could not find UIApplication or suitable responder in chain")
             print("⚠️ Showing fallback instruction banner")
             showUploadInstructionBanner()
+            // Clear active state if failed
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.updateToolbarButtonState(.upload, isActive: false)
+            }
         }
     }
     
