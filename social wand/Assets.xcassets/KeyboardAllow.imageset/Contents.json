@@ -1,0 +1,23 @@
+{
+  "images": [
+    {
+      "idiom": "universal",
+      "filename": "KeyboardAllow.png",
+      "scale": "1x"
+    },
+    {
+      "idiom": "universal",
+      "scale": "2x",
+      "filename": "KeyboardAllow.png"
+    },
+    {
+      "idiom": "universal",
+      "scale": "3x",
+      "filename": "KeyboardAllow.png"
+    }
+  ],
+  "info": {
+    "version": 1,
+    "author": "xcode"
+  }
+}

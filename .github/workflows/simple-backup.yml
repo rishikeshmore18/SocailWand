@@ -1,0 +1,31 @@
+name: Simple Backup
+
+on:
+  workflow_dispatch:  # Only manual trigger (you control when it runs)
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Git
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+
+      - name: Commit and push all changes
+        run: |
+          git add -A
+          git diff --staged --quiet || git commit -m "Auto-backup: $(date +'%Y-%m-%d %H:%M:%S UTC')"
+          git push
+          
+      - name: Success message
+        run: echo "✅ Backup completed successfully!"
+

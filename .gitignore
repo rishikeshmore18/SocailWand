@@ -1,0 +1,77 @@
+# Environment variables and secrets (CRITICAL - NEVER commit these!)
+.env
+.env.local
+.env*.local
+.env.development
+.env.production
+.env.test
+
+# Xcode
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+!*.xcworkspace/contents.xcworkspacedata
+*.xcuserstate
+*.xcuserdatad/
+xcuserdata/
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+*.app.dSYM
+
+# Build directories
+build/
+*.build/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+
+# Node modules
+node_modules/
+.pnp
+.pnp.js
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary files
+*.tmp
+*.temp
+*.cache
+
+# Package managers (we'll keep package-lock.json for consistency, but ignore these patterns)
+# package-lock.json
+yarn.lock
+Podfile.lock
+
+# Next.js (backend)
+.next/
+out/
+dist/
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+
+# Testing
+coverage/
+.nyc_output/
+
