@@ -51,7 +51,7 @@ git push
 if [ $? -eq 0 ]; then
     echo ""
     echo -e "${GREEN}✅ Success! Your changes are now on GitHub!${NC}"
-    echo -e "${BLUE}🔗 View your repo: https://github.com/rishikeshmore18/SocialWand${NC}"
+    echo -e "${BLUE}🔗 View your repo: https://github.com/rishikeshmore18/SocailWand${NC}"
 else
     echo ""
     echo -e "${YELLOW}❌ Push failed. You may need to authenticate with GitHub.${NC}"
