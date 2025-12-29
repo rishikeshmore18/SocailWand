@@ -32,6 +32,9 @@ node_modules/
 .pnp
 .pnp.js
 
+# Node.js binary (large downloaded folder)
+node-v*/
+
 # macOS
 .DS_Store
 .AppleDouble
