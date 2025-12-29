@@ -8,12 +8,9 @@ import UIKit
 
 // MARK: - Models
 
-// Note: Color(hex:) extension is defined in WandIcon.swift and available to all files in this module
-
 struct ToneOption: Identifiable, Hashable {
     let id: String
     let title: String
-    let subtitle: String
     let emoji: String
     let isComingSoon: Bool
 }
@@ -23,7 +20,12 @@ struct ToneOption: Identifiable, Hashable {
 struct TonePickerView: View {
     
     let onApply: ([String]) -> Void
+    let onSave: ([String]) -> Void  // Still called, but automatically
     let onCancel: () -> Void
+    let onClear: () -> Void  // Still called, but automatically
+    let savedPreferences: [String]
+    let hasTextContent: Bool
+    let showDoneButton: Bool  // true = main app, false = keyboard
     
     @State private var selectedIDs: Set<String> = []
     @State private var showComingSoon: Bool = false
@@ -33,14 +35,14 @@ struct TonePickerView: View {
     private let maxSelections = 3
     
     private let tones: [ToneOption] = [
-        ToneOption(id: "assertive", title: "Assertive", subtitle: "Stand your ground", emoji: "💪", isComingSoon: false),
-        ToneOption(id: "confident", title: "Confident", subtitle: "Own your message", emoji: "😎", isComingSoon: false),
-        ToneOption(id: "playful", title: "Playful", subtitle: "Keep it fun", emoji: "😜", isComingSoon: false),
-        ToneOption(id: "empathetic", title: "Empathetic", subtitle: "Show you care", emoji: "😌", isComingSoon: false),
-        ToneOption(id: "flirtatious", title: "Flirtatious", subtitle: "Turn up the charm", emoji: "💋", isComingSoon: false),
-        ToneOption(id: "professional", title: "Professional", subtitle: "Keep it polished", emoji: "💼", isComingSoon: false),
-        ToneOption(id: "casual", title: "Casual", subtitle: "Stay relaxed", emoji: "🤙", isComingSoon: false),
-        ToneOption(id: "custom", title: "Custom", subtitle: "Coming soon", emoji: "✨", isComingSoon: true)
+        ToneOption(id: "assertive", title: "Assertive", emoji: "💪", isComingSoon: false),
+        ToneOption(id: "confident", title: "Confident", emoji: "😎", isComingSoon: false),
+        ToneOption(id: "playful", title: "Playful", emoji: "😜", isComingSoon: false),
+        ToneOption(id: "empathetic", title: "Empathetic", emoji: "😌", isComingSoon: false),
+        ToneOption(id: "flirtatious", title: "Flirtatious", emoji: "💋", isComingSoon: false),
+        ToneOption(id: "professional", title: "Professional", emoji: "💼", isComingSoon: false),
+        ToneOption(id: "casual", title: "Casual", emoji: "🤙", isComingSoon: false),
+        ToneOption(id: "custom", title: "Custom", emoji: "✨", isComingSoon: true)
     ]
     
     var body: some View {
@@ -69,29 +71,41 @@ struct TonePickerView: View {
                         }
                         .padding(.horizontal, metrics.horizontalPadding)
                         .padding(.top, metrics.contentTopPadding)
-                        .padding(.bottom, metrics.ctaHeight + metrics.ctaSpacing + 20)
+                        .padding(.bottom, 120)
                     }
                 }
                 
-                VStack {
-                    Spacer()
-                    applyButton(metrics: metrics)
+                // ✅ Show Done button for main app, Gen button for keyboard
+                if showDoneButton {
+                    doneButton()
+                } else if !selectedIDs.isEmpty && hasTextContent {
+                    genButton(metrics: metrics)
                 }
             }
             .overlay(comingSoonToast)
+            .onAppear {
+                if selectedIDs.isEmpty && !savedPreferences.isEmpty {
+                    selectedIDs = Set(savedPreferences)
+                    print("✅ Pre-selected saved tones: \(savedPreferences)")
+                }
+            }
         }
     }
     
     private func header(metrics: ToneCardMetrics) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Choose Tone")
-                    .font(.system(size: metrics.headerFont, weight: .bold))
-                    .foregroundColor(.white)
-                Text(selectedIDs.isEmpty ? "How should this sound?" : "\(selectedIDs.count)/\(maxSelections) selected")
-                    .font(.system(size: metrics.subtitleFont))
-                    .foregroundColor(.secondary)
-            }
+        HStack(spacing: 8) {
+            Text("Choose Tone")
+                .font(.system(size: metrics.headerFont, weight: .bold))
+                .foregroundColor(.primary)
+            
+            Text("•")
+                .foregroundColor(.secondary)
+                .font(.system(size: metrics.subtitleFont))
+            
+            Text(selectedIDs.isEmpty ? "How should this sound?" : "\(selectedIDs.count)/\(maxSelections) selected")
+                .font(.system(size: metrics.subtitleFont))
+                .foregroundColor(.secondary)
+            
             Spacer()
         }
         .padding(.horizontal, metrics.horizontalPadding)
@@ -100,23 +114,50 @@ struct TonePickerView: View {
         .background(backgroundColor.opacity(0.95))
     }
     
-    private func applyButton(metrics: ToneCardMetrics) -> some View {
-        Button(action: handleApply) {
-            Text("Apply Changes")
-                .font(.system(size: metrics.ctaFont, weight: .bold))
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: metrics.ctaHeight)
+    // ✅ NEW: Single Gen button (bottom right corner)
+    private func genButton(metrics: ToneCardMetrics) -> some View {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                Button(action: handleGenerate) {
+                    Text("Gen")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 100, height: 46)
+                }
+                .buttonStyle(CornerButtonStyle(color: Color(hex: "8B5CF6")))
+            }
+            .padding(.horizontal, metrics.horizontalPadding)
+            .padding(.bottom, 16)
         }
-        .buttonStyle(ToneApplyButtonStyle())
-        .disabled(selectedIDs.isEmpty)
-        .opacity(selectedIDs.isEmpty ? 0.45 : 1)
-        .padding(.horizontal, metrics.horizontalPadding)
-        .padding(.bottom, 16)
-        .background(
-            backgroundColor.opacity(0.95)
-                .ignoresSafeArea(edges: .bottom)
-        )
+    }
+    
+    // ✅ DONE BUTTON: Full-width button bottom (for Add Context page)
+    private func doneButton() -> some View {
+        VStack {
+            Spacer()
+            Button(action: {
+                triggerHaptic(style: .medium)
+                onCancel()
+            }) {
+                Text("Done")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 54)
+                    .background(
+                        LinearGradient(
+                            colors: [Color(hex: "8B5CF6"), Color(hex: "7C3AED")],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .cornerRadius(16)
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 32)
+        }
     }
     
     @ViewBuilder
@@ -129,16 +170,16 @@ struct TonePickerView: View {
                         .font(.system(size: 18))
                     Text("Coming soon!")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(.white)
+                        .foregroundColor(.primary)
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
                 .background(
                     RoundedRectangle(cornerRadius: 20)
-                        .fill(Color.white.opacity(0.15))
+                        .fill(Color.gray.opacity(0.2))
                         .overlay(
                             RoundedRectangle(cornerRadius: 20)
-                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
                         )
                 )
                 .padding(.bottom, 100)
@@ -147,6 +188,7 @@ struct TonePickerView: View {
         }
     }
     
+    // ✅ CHANGED: Auto-save on every tap
     private func handleToneTap(_ tone: ToneOption) {
         if tone.isComingSoon {
             triggerHaptic(style: .rigid)
@@ -164,22 +206,44 @@ struct TonePickerView: View {
         triggerHaptic(style: .light)
         withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
             if selectedIDs.contains(tone.id) {
+                // Deselect - remove from set
                 selectedIDs.remove(tone.id)
             } else if selectedIDs.count < maxSelections {
+                // Select - add to set
                 selectedIDs.insert(tone.id)
             } else {
+                // Max selections reached
                 triggerHaptic(style: .rigid)
+                return
             }
+        }
+        
+        // ✅ AUTO-SAVE: Immediately save to App Group
+        autoSave()
+    }
+    
+    // ✅ NEW: Auto-save helper
+    private func autoSave() {
+        if selectedIDs.isEmpty {
+            // No selections - clear saved preferences
+            onClear()
+            print("✅ Auto-cleared tone preferences")
+        } else {
+            // Has selections - save them
+            let selectedToneIDs = Array(selectedIDs)
+            onSave(selectedToneIDs)
+            print("✅ Auto-saved tone preferences: \(selectedToneIDs)")
         }
     }
     
-    private func handleApply() {
+    private func handleGenerate() {
         guard !selectedIDs.isEmpty else { return }
         
         let selectedTitles = tones
             .filter { selectedIDs.contains($0.id) }
             .map { $0.title }
         
+        triggerHaptic(style: .medium)
         onApply(selectedTitles)
     }
     
@@ -206,31 +270,32 @@ private struct ToneCard: View {
     
     var body: some View {
         Button(action: action) {
-            HStack(spacing: metrics.innerSpacing) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Text(option.title)
-                            .font(.system(size: metrics.titleFont, weight: .semibold))
-                            .foregroundColor(textColor)
-                        Text(option.emoji)
-                            .font(.system(size: metrics.emojiFont))
-                    }
-                    Text(option.subtitle)
-                        .font(.system(size: metrics.subtitleFont))
-                        .foregroundColor(.secondary)
+            ZStack {
+                HStack(spacing: 12) {
+                    Spacer()
+                    
+                    Text(option.emoji)
+                        .font(.system(size: metrics.emojiFont))
+                    
+                    Text(option.title)
+                        .font(.system(size: metrics.titleFont, weight: .semibold))
+                        .foregroundColor(.primary)
+                    
+                    Spacer()
                 }
                 
-                Spacer()
-                
                 if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundColor(Color(hex: "8B5CF6"))
+                    HStack {
+                        Spacer()
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 22))
+                            .foregroundColor(Color(hex: "8B5CF6"))
+                            .padding(.trailing, 16)
+                    }
                 }
             }
             .padding(.horizontal, metrics.horizontalPadding)
             .padding(.vertical, metrics.verticalPadding)
-            .frame(maxWidth: .infinity, alignment: .leading)
             .background(cardBackground)
             .overlay(cardBorder)
             .clipShape(RoundedRectangle(cornerRadius: metrics.cornerRadius, style: .continuous))
@@ -240,27 +305,17 @@ private struct ToneCard: View {
         .disabled(isDisabled && !isSelected)
     }
     
-    private var textColor: Color {
-        if option.isComingSoon {
-            return Color.secondary
-        }
-        return .white
-    }
-    
     @ViewBuilder
     private var cardBackground: some View {
         RoundedRectangle(cornerRadius: metrics.cornerRadius, style: .continuous)
-            .fill(
-                (colorScheme == .dark ? Color(white: 0.15) : Color.white)
-                    .opacity(isSelected ? 0.65 : 0.45)
-            )
+            .fill(Color(UIColor.systemBackground))
     }
     
     private var cardBorder: some View {
         RoundedRectangle(cornerRadius: metrics.cornerRadius, style: .continuous)
             .strokeBorder(
-                isSelected ? Color(hex: "8B5CF6") : Color(hex: "262626"),
-                lineWidth: isSelected ? metrics.borderWidth : 1
+                isSelected ? Color(hex: "8B5CF6") : Color.gray.opacity(0.3),
+                lineWidth: isSelected ? metrics.borderWidth : 1.5
             )
             .shadow(
                 color: isSelected ? Color(hex: "8B5CF6").opacity(0.30) : .clear,
@@ -270,21 +325,23 @@ private struct ToneCard: View {
     }
 }
 
-// MARK: - Button Style
+// MARK: - Button Styles
 
-private struct ToneApplyButtonStyle: ButtonStyle {
+private struct CornerButtonStyle: ButtonStyle {
+    let color: Color
+    
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .background(
                 LinearGradient(
-                    colors: [Color(hex: "8B5CF6"), Color(hex: "7C3AED")],
+                    colors: [color, color.opacity(0.9)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
             )
-            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-            .shadow(color: Color.black.opacity(0.25), radius: 18, y: 6)
-            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .clipShape(RoundedRectangle(cornerRadius: 23, style: .continuous))
+            .shadow(color: Color.black.opacity(0.25), radius: 12, y: 4)
+            .scaleEffect(configuration.isPressed ? 0.95 : 1)
             .animation(.spring(response: 0.25, dampingFraction: 0.75), value: configuration.isPressed)
     }
 }
@@ -326,14 +383,14 @@ private struct ToneCardMetrics {
                 horizontalPadding: 16, verticalPadding: 12, cardSpacing: 10,
                 titleFont: 16, subtitleFont: 13, emojiFont: 20,
                 headerFont: 18, ctaFont: 16, ctaHeight: 48, ctaSpacing: 12,
-                cornerRadius: 16, borderWidth: 2, innerSpacing: 12, contentTopPadding: 8
+                cornerRadius: 16, borderWidth: 3, innerSpacing: 12, contentTopPadding: 8
             )
         case .medium:
             return ToneCardMetrics(
                 horizontalPadding: 18, verticalPadding: 14, cardSpacing: 12,
                 titleFont: 17, subtitleFont: 14, emojiFont: 22,
                 headerFont: 20, ctaFont: 17, ctaHeight: 52, ctaSpacing: 14,
-                cornerRadius: 18, borderWidth: 2.5, innerSpacing: 14, contentTopPadding: 12
+                cornerRadius: 18, borderWidth: 3, innerSpacing: 14, contentTopPadding: 12
             )
         case .large:
             return ToneCardMetrics(
@@ -345,4 +402,3 @@ private struct ToneCardMetrics {
         }
     }
 }
-

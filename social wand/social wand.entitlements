@@ -3,6 +3,8 @@
 <plist version="1.0">
 <dict>
 	<key>com.apple.security.application-groups</key>
-	<array/>
+	<array>
+		<string>group.rishi-more.social-wand</string>
+	</array>
 </dict>
 </plist>
