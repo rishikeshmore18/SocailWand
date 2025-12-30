@@ -75,6 +75,9 @@ final class KeyboardViewController: KeyboardInputViewController {
     // Flag to prevent clearing state during restoration
     private var isRestoringPicker = false
     
+    // Sync timer for monitoring App Group changes
+    private var lengthSyncTimer: Timer? = nil
+    
     // MARK: - Lifecycle
 
     override func viewDidLoad() {
@@ -89,6 +92,9 @@ final class KeyboardViewController: KeyboardInputViewController {
         savedLengthPreference = loadSavedLengthPreference()
         
         updateFullAccessFlag()
+        
+        // Start polling for length preference changes (same as TonePicker)
+        startLengthSyncTimer()
     }
     
     override func viewDidAppear(_ animated: Bool) {
@@ -122,6 +128,11 @@ final class KeyboardViewController: KeyboardInputViewController {
         
         // Check for pending suggestion
         checkForPendingSuggestion()
+        
+        // Restart length sync timer if it was stopped
+        if lengthSyncTimer == nil {
+            startLengthSyncTimer()
+        }
         
         updateFullAccessFlag()
     }
@@ -684,6 +695,9 @@ final class KeyboardViewController: KeyboardInputViewController {
     private func showTonePicker() {
         guard tonePickerHosting == nil else { return }
         
+        // Reload latest length preference before showing picker
+        savedLengthPreference = loadSavedLengthPreference()
+        
         if suggestionsHosting != nil {
             hideSuggestionsView()
         }
@@ -983,9 +997,62 @@ final class KeyboardViewController: KeyboardInputViewController {
             return nil
         }
         
+        // Force sync to ensure we get latest value
+        defaults.synchronize()
+        
         let saved = defaults.string(forKey: "SavedLengthPreference")
-        print("📖 Loaded saved length preference: \(saved ?? "none")")
         return saved
+    }
+    
+    private func startLengthSyncTimer() {
+        // Stop existing timer if any
+        lengthSyncTimer?.invalidate()
+        
+        // Poll for length changes every 0.5 seconds (matches TonePicker)
+        lengthSyncTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            
+            // Reload length from App Groups
+            let previousLength = self.savedLengthPreference
+            let newLength = self.loadSavedLengthPreference()
+            
+            // Only update if changed (prevents unnecessary updates)
+            if newLength != previousLength {
+                self.savedLengthPreference = newLength
+                if let unwrapped = newLength {
+                    print("🔄 KeyboardVC synced length: \(unwrapped)")
+                } else {
+                    print("🔄 KeyboardVC cleared length")
+                }
+                
+                // If Length picker is currently open, recreate it with new value
+                if self.lengthPickerHosting != nil {
+                    self.refreshLengthPicker()
+                }
+            }
+        }
+        
+        print("✅ Started length sync timer (0.5s polling)")
+    }
+    
+    private func refreshLengthPicker() {
+        guard lengthPickerHosting != nil else { return }
+        
+        print("🔄 Refreshing Length picker with updated preference")
+        
+        // Save current state
+        let wasOpen = true
+        
+        // Close and reopen with new state
+        hideLengthPicker()
+        
+        // Small delay to ensure clean state
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self = self else { return }
+            if wasOpen {
+                self.showLengthPicker()
+            }
+        }
     }
     
     private func clearSavedLengthPreference() {
@@ -1652,6 +1719,11 @@ final class KeyboardViewController: KeyboardInputViewController {
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         updateFullAccessFlag()
+        
+        // Stop length sync timer when keyboard disappears
+        lengthSyncTimer?.invalidate()
+        lengthSyncTimer = nil
+        print("🛑 Stopped length sync timer")
     }
     
     override func textWillChange(_ textInput: UITextInput?) {

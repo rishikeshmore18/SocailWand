@@ -6,6 +6,10 @@
 import SwiftUI
 import UIKit
 
+// MARK: - Constants
+
+private let appGroupID = "group.rishi-more.social-wand"
+
 // MARK: - Models
 
 struct ToneOption: Identifiable, Hashable {
@@ -29,6 +33,10 @@ struct TonePickerView: View {
     
     @State private var selectedIDs: Set<String> = []
     @State private var showComingSoon: Bool = false
+    @State private var savedLengthPreference: String? = nil
+    @State private var showLengthDropdown: Bool = false
+    @State private var showBlurOverlay: Bool = false
+    @State private var syncTimer: Timer? = nil
     
     @Environment(\.colorScheme) var colorScheme
     
@@ -75,6 +83,24 @@ struct TonePickerView: View {
                     }
                 }
                 
+                // Blur overlay (appears when dropdown is open)
+                blurOverlay
+                
+                // Dropdown menu (high z-index, positioned relative to header)
+                if showLengthDropdown {
+                    GeometryReader { geo in
+                        VStack {
+                            HStack {
+                                Spacer()
+                                lengthDropdownMenu(metrics: metrics)
+                                    .offset(x: -16, y: 72)  // 72 = header height (60) + small gap (12)
+                            }
+                            Spacer()
+                        }
+                    }
+                    .zIndex(100)
+                }
+                
                 // ✅ Show Done button for main app, Gen button for keyboard
                 if showDoneButton {
                     doneButton()
@@ -83,35 +109,177 @@ struct TonePickerView: View {
                 }
             }
             .overlay(comingSoonToast)
+            .onTapGesture {
+                // Close dropdown if tapping outside
+                if showLengthDropdown {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                        showLengthDropdown = false
+                        showBlurOverlay = false
+                    }
+                }
+            }
             .onAppear {
                 if selectedIDs.isEmpty && !savedPreferences.isEmpty {
                     selectedIDs = Set(savedPreferences)
                     print("✅ Pre-selected saved tones: \(savedPreferences)")
                 }
+                loadSavedLength()
+                
+                // Set up listener for App Group changes
+                NotificationCenter.default.addObserver(
+                    forName: UserDefaults.didChangeNotification,
+                    object: nil,
+                    queue: .main
+                ) { _ in
+                    // Force reload from App Group on any UserDefaults change
+                    loadSavedLength()
+                }
+                
+                // Poll for changes every 0.5 seconds (ensures sync)
+                syncTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+                    loadSavedLength()
+                }
+            }
+            .onDisappear {
+                // Clean up timer
+                syncTimer?.invalidate()
+                syncTimer = nil
             }
         }
     }
     
     private func header(metrics: ToneCardMetrics) -> some View {
-        HStack(spacing: 8) {
-            Text("Choose Tone")
-                .font(.system(size: metrics.headerFont, weight: .bold))
-                .foregroundColor(.primary)
-            
-            Text("•")
-                .foregroundColor(.secondary)
-                .font(.system(size: metrics.subtitleFont))
-            
-            Text(selectedIDs.isEmpty ? "How should this sound?" : "\(selectedIDs.count)/\(maxSelections) selected")
-                .font(.system(size: metrics.subtitleFont))
+        HStack(spacing: 12) {
+            // Left: Selection count
+            Text("\(selectedIDs.count)/\(maxSelections) selected")
+                .font(.system(size: metrics.subtitleFont, weight: .medium))
                 .foregroundColor(.secondary)
             
             Spacer()
+            
+            // Right: Length dropdown button
+            lengthButton(metrics: metrics)
         }
         .padding(.horizontal, metrics.horizontalPadding)
         .padding(.top, 16)
         .padding(.bottom, 12)
         .background(backgroundColor.opacity(0.95))
+    }
+    
+    @ViewBuilder
+    private func lengthButton(metrics: ToneCardMetrics) -> some View {
+        if let selectedLength = savedLengthPreference {
+            // Show selected length with X button
+            HStack(spacing: 6) {
+                // Tappable chip body (opens dropdown)
+                Button(action: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                        showLengthDropdown.toggle()
+                        showBlurOverlay = showLengthDropdown
+                    }
+                    triggerHaptic(style: .light)
+                }) {
+                    Text(selectedLength.capitalized)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.leading, 12)
+                        .padding(.vertical, 6)
+                }
+                
+                // Tappable X icon (clears selection)
+                Button(action: {
+                    clearLength()
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(.white.opacity(0.8))
+                        .padding(.trailing, 12)
+                        .padding(.vertical, 6)
+                }
+            }
+            .background(
+                LinearGradient(
+                    colors: [Color(hex: "8B5CF6"), Color(hex: "7C3AED")],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .cornerRadius(16)
+        } else {
+            // Show dropdown button
+            Button(action: {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                    showLengthDropdown.toggle()
+                    showBlurOverlay = showLengthDropdown
+                }
+                triggerHaptic(style: .light)
+            }) {
+                HStack(spacing: 4) {
+                    Text("Length")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.primary)
+                    
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.gray.opacity(colorScheme == .dark ? 0.3 : 0.15))
+                .cornerRadius(16)
+            }
+        }
+    }
+    
+    private func lengthDropdownMenu(metrics: ToneCardMetrics) -> some View {
+        VStack(spacing: 0) {
+            ForEach([
+                LengthOption(id: "short", title: "Short", emoji: "⚡"),
+                LengthOption(id: "medium", title: "Medium", emoji: "⚖️"),
+                LengthOption(id: "long", title: "Long", emoji: "📜")
+            ]) { option in
+                Button(action: {
+                    selectLength(option.id)
+                }) {
+                    HStack(spacing: 8) {
+                        Text(option.emoji)
+                            .font(.system(size: 16))
+                        
+                        Text(option.title)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.primary)
+                        
+                        Spacer()
+                        
+                        if savedLengthPreference == option.id {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(Color(hex: "8B5CF6"))
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(
+                        savedLengthPreference == option.id
+                            ? Color(hex: "8B5CF6").opacity(0.1)
+                            : Color.clear
+                    )
+                }
+                .buttonStyle(.plain)
+                
+                if option.id != "long" {
+                    Divider()
+                        .padding(.horizontal, 8)
+                }
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(colorScheme == .dark ? Color(white: 0.15) : Color.white)
+                .shadow(color: Color.black.opacity(0.15), radius: 12, y: 4)
+        )
+        .frame(width: 140)
+        .transition(.scale(scale: 0.9).combined(with: .opacity))
     }
     
     // ✅ NEW: Single Gen button (bottom right corner)
@@ -236,6 +404,66 @@ struct TonePickerView: View {
         }
     }
     
+    private func selectLength(_ lengthID: String) {
+        savedLengthPreference = lengthID
+        
+        // Save to App Group
+        if let defaults = UserDefaults(suiteName: appGroupID) {
+            defaults.set(lengthID, forKey: "SavedLengthPreference")
+            defaults.synchronize()
+            print("✅ Saved length preference from TonePicker: \(lengthID)")
+        }
+        
+        // Broadcast change to other views
+        NotificationCenter.default.post(
+            name: UserDefaults.didChangeNotification,
+            object: nil
+        )
+        
+        // Close dropdown and blur
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+            showLengthDropdown = false
+            showBlurOverlay = false
+        }
+        
+        triggerHaptic(style: .medium)
+    }
+    
+    private func clearLength() {
+        savedLengthPreference = nil
+        
+        // Clear from App Group
+        if let defaults = UserDefaults(suiteName: appGroupID) {
+            defaults.removeObject(forKey: "SavedLengthPreference")
+            defaults.synchronize()
+            print("✅ Cleared length preference from TonePicker")
+        }
+        
+        // Broadcast change to other views
+        NotificationCenter.default.post(
+            name: UserDefaults.didChangeNotification,
+            object: nil
+        )
+        
+        triggerHaptic(style: .light)
+    }
+    
+    private func loadSavedLength() {
+        if let defaults = UserDefaults(suiteName: appGroupID) {
+            let saved = defaults.string(forKey: "SavedLengthPreference")
+            
+            // Only update if changed (prevents unnecessary re-renders)
+            if saved != savedLengthPreference {
+                savedLengthPreference = saved
+                if let unwrapped = saved {
+                    print("✅ Synced length in TonePicker: \(unwrapped)")
+                } else {
+                    print("✅ Cleared length in TonePicker")
+                }
+            }
+        }
+    }
+    
     private func handleGenerate() {
         guard !selectedIDs.isEmpty else { return }
         
@@ -245,6 +473,25 @@ struct TonePickerView: View {
         
         triggerHaptic(style: .medium)
         onApply(selectedTitles)
+    }
+    
+    @ViewBuilder
+    private var blurOverlay: some View {
+        if showBlurOverlay {
+            Color.black.opacity(0.3)
+                .ignoresSafeArea()
+                .transition(.opacity)
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                        showLengthDropdown = false
+                        showBlurOverlay = false
+                    }
+                }
+                .zIndex(99)
+        } else {
+            Color.clear
+                .ignoresSafeArea()
+        }
     }
     
     private var backgroundColor: Color {

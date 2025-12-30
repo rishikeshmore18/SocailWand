@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct SuggestionsView: View {
     
@@ -12,6 +13,8 @@ struct SuggestionsView: View {
     @ObservedObject var viewModel: SuggestionsViewModel
     
     @Environment(\.colorScheme) var colorScheme
+    
+    @State private var selectedSuggestionIndex: Int? = nil
     
     // MARK: - Body
     
@@ -83,7 +86,8 @@ struct SuggestionsView: View {
                 suggestionCard(
                     text: suggestion.text,
                     badge: index % 2 == 0 ? "Safe" : "Bold",
-                    badgeColor: index % 2 == 0 ? .green : Color(hex: "8B5CF6")
+                    badgeColor: index % 2 == 0 ? .green : Color(hex: "8B5CF6"),
+                    index: index
                 )
             }
             
@@ -120,31 +124,65 @@ struct SuggestionsView: View {
         }
     }
     
-    private func suggestionCard(text: String, badge: String, badgeColor: Color) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Badge
-            HStack {
-                Text(badge)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(badgeColor)
-                    .cornerRadius(8)
-                Spacer()
+    private func suggestionCard(text: String, badge: String, badgeColor: Color, index: Int) -> some View {
+        let isSelected = selectedSuggestionIndex == index
+        
+        return ZStack(alignment: .topTrailing) {
+            // Main card content
+            VStack(alignment: .leading, spacing: 12) {
+                // Badge
+                HStack {
+                    Text(badge)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(badgeColor)
+                        .cornerRadius(8)
+                    Spacer()
+                }
+                
+                // Text
+                Text(text)
+                    .font(.system(size: 15))
+                    .foregroundColor(.primary)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(16)
+            .background(cardBackground)
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isSelected ? Color(hex: "8B5CF6") : Color.clear, lineWidth: 2)
+            )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                    if selectedSuggestionIndex == index {
+                        // Deselect if tapping the same card
+                        selectedSuggestionIndex = nil
+                    } else {
+                        // Select this card
+                        selectedSuggestionIndex = index
+                    }
+                }
+                
+                // Haptic feedback
+                let generator = UIImpactFeedbackGenerator(style: .light)
+                generator.impactOccurred()
             }
             
-            // Text
-            Text(text)
-                .font(.system(size: 15))
-                .foregroundColor(.primary)
-                .multilineTextAlignment(.leading)
-                .lineLimit(nil)
-                .fixedSize(horizontal: false, vertical: true)
-            
-            HStack {
-                Spacer()
-                Button(action: { viewModel.onApply?(text) }) {
+            // Overlay Apply button (only shows when selected)
+            if isSelected {
+                Button(action: {
+                    viewModel.onApply?(text)
+                    
+                    // Haptic feedback
+                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                    generator.impactOccurred()
+                }) {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 14))
@@ -152,22 +190,32 @@ struct SuggestionsView: View {
                             .font(.system(size: 15, weight: .semibold))
                     }
                     .foregroundColor(.white)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
                     .background(
-                        LinearGradient(
-                            colors: [Color(hex: "8B5CF6"), Color(hex: "7C3AED")],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
+                        ZStack {
+                            // Blur background
+                            BlurView(style: colorScheme == .dark ? .dark : .light)
+                            
+                            // Purple gradient overlay
+                            LinearGradient(
+                                colors: [
+                                    Color(hex: "8B5CF6").opacity(0.9),
+                                    Color(hex: "7C3AED").opacity(0.9)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        }
                     )
                     .cornerRadius(20)
+                    .shadow(color: Color.black.opacity(0.2), radius: 8, y: 4)
                 }
+                .padding(.top, 16)
+                .padding(.trailing, 16)
+                .transition(.scale.combined(with: .opacity))
             }
         }
-        .padding(16)
-        .background(cardBackground)
-        .cornerRadius(12)
         .padding(.horizontal, 16)
     }
     
@@ -237,6 +285,21 @@ struct SuggestionsView: View {
     
     private var cardBackground: Color {
         colorScheme == .dark ? Color(white: 0.15) : .white
+    }
+}
+
+// MARK: - BlurView Helper
+
+struct BlurView: UIViewRepresentable {
+    let style: UIBlurEffect.Style
+    
+    func makeUIView(context: Context) -> UIVisualEffectView {
+        let view = UIVisualEffectView(effect: UIBlurEffect(style: style))
+        return view
+    }
+    
+    func updateUIView(_ uiView: UIVisualEffectView, context: Context) {
+        uiView.effect = UIBlurEffect(style: style)
     }
 }
 

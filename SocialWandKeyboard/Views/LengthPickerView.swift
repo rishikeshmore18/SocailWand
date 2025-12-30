@@ -205,6 +205,12 @@ struct LengthPickerView: View {
             onSave(selectedID!)
             print("✅ Auto-saved length preference: \(selectedID!)")
         }
+        
+        // Broadcast change to other views
+        NotificationCenter.default.post(
+            name: UserDefaults.didChangeNotification,
+            object: nil
+        )
     }
     
     private func handleGenerate() {
