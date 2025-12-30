@@ -346,6 +346,130 @@ final class KeyboardAIService {
         }
     }
 
+    // MARK: - Reply Generation
+
+    func generateReply(for incomingText: String, tones: [String]?, length: String?, previousOutputs: [String] = []) async throws -> [String] {
+        
+        guard let url = URL(string: "\(baseURL)/api/reply") else {
+            throw KeyboardAIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        var requestBody: [String: Any] = [
+            "text": incomingText,
+            "previousOutputs": previousOutputs
+        ]
+        
+        if let tones = tones, !tones.isEmpty {
+            requestBody["tones"] = tones
+        }
+        
+        if let length = length {
+            requestBody["length"] = length.capitalized
+        }
+        
+        request.httpBody = try? JSONSerialization.data(withJSONObject: requestBody)
+        
+        do {
+            let (data, response) = try await session.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw KeyboardAIError.invalidResponse
+            }
+            
+            if !(200...299).contains(httpResponse.statusCode) {
+                try throwForHTTPFailure(endpoint: "/api/reply", statusCode: httpResponse.statusCode, data: data)
+            }
+            
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let alternatives = json["alternatives"] as? [String], alternatives.count >= 2 {
+                debugLog("✅ [KeyboardAIService] /api/reply -> \(alternatives.count) alternatives")
+                return Array(alternatives.prefix(2))
+            }
+            
+            throw KeyboardAIError.invalidResponse
+            
+        } catch let error as KeyboardAIError {
+            throw error
+        } catch let error as URLError {
+            if error.code == .notConnectedToInternet || error.code == .networkConnectionLost {
+                throw KeyboardAIError.networkError
+            } else if error.code == .timedOut {
+                throw KeyboardAIError.serviceUnavailable("Request timed out")
+            } else {
+                throw KeyboardAIError.networkError
+            }
+        } catch {
+            debugLog("❌ [KeyboardAIService] /api/reply unexpected error: \(error)")
+            throw KeyboardAIError.invalidResponse
+        }
+    }
+
+    // MARK: - Rewrite Generation
+
+    func generateRewrite(for originalText: String, tones: [String]?, length: String?, previousOutputs: [String] = []) async throws -> [String] {
+        
+        guard let url = URL(string: "\(baseURL)/api/rewrite") else {
+            throw KeyboardAIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        var requestBody: [String: Any] = [
+            "text": originalText,
+            "previousOutputs": previousOutputs
+        ]
+        
+        if let tones = tones, !tones.isEmpty {
+            requestBody["tones"] = tones
+        }
+        
+        if let length = length {
+            requestBody["length"] = length.capitalized
+        }
+        
+        request.httpBody = try? JSONSerialization.data(withJSONObject: requestBody)
+        
+        do {
+            let (data, response) = try await session.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw KeyboardAIError.invalidResponse
+            }
+            
+            if !(200...299).contains(httpResponse.statusCode) {
+                try throwForHTTPFailure(endpoint: "/api/rewrite", statusCode: httpResponse.statusCode, data: data)
+            }
+            
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let alternatives = json["alternatives"] as? [String], alternatives.count >= 2 {
+                debugLog("✅ [KeyboardAIService] /api/rewrite -> \(alternatives.count) alternatives")
+                return Array(alternatives.prefix(2))
+            }
+            
+            throw KeyboardAIError.invalidResponse
+            
+        } catch let error as KeyboardAIError {
+            throw error
+        } catch let error as URLError {
+            if error.code == .notConnectedToInternet || error.code == .networkConnectionLost {
+                throw KeyboardAIError.networkError
+            } else if error.code == .timedOut {
+                throw KeyboardAIError.serviceUnavailable("Request timed out")
+            } else {
+                throw KeyboardAIError.networkError
+            }
+        } catch {
+            debugLog("❌ [KeyboardAIService] /api/rewrite unexpected error: \(error)")
+            throw KeyboardAIError.invalidResponse
+        }
+    }
+
     // MARK: - Private Methods
 
     private func loadTraits() -> [String]? {

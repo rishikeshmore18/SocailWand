@@ -332,6 +332,72 @@ final class KeyboardViewController: KeyboardInputViewController {
         suggestionsViewModel.onRetry = { [weak self] in
             self?.retryLastOperation()
         }
+        
+        // ✅ NEW: Handle preference changes from suggestions view
+        suggestionsViewModel.onPreferencesChanged = { [weak self] toneIDs, lengthID in
+            guard let self = self else { return }
+            
+            print("🎨 Preferences changed in SuggestionsView:")
+            print("   Tones: \(toneIDs)")
+            print("   Length: \(lengthID ?? "none")")
+            
+            // Update saved preferences
+            self.savedTonePreferences = toneIDs
+            self.savedLengthPreference = lengthID
+            
+            // Get the last operation to know what to regenerate
+            guard let lastOp = self.suggestionsViewModel.lastOperation else {
+                print("⚠️ No last operation to regenerate")
+                return
+            }
+            
+            // Convert tone IDs to titles for API
+            let toneTitles = toneIDs.compactMap { self.toneMapping[$0] }
+            
+            // Regenerate based on last operation type
+            switch lastOp {
+            case .normalGeneration(let text):
+                if let length = lengthID {
+                    let lengthTitle = length.prefix(1).uppercased() + length.dropFirst()
+                    self.applyLengthToText(text, length: lengthTitle, tones: toneTitles.isEmpty ? nil : toneTitles)
+                } else if !toneTitles.isEmpty {
+                    self.applyTonesToText(text, tones: toneTitles)
+                } else {
+                    self.generateSuggestions(for: text)
+                }
+                
+            case .toneChange(let text, _):
+                if let length = lengthID {
+                    let lengthTitle = length.prefix(1).uppercased() + length.dropFirst()
+                    self.applyLengthToText(text, length: lengthTitle, tones: toneTitles.isEmpty ? nil : toneTitles)
+                } else if !toneTitles.isEmpty {
+                    self.applyTonesToText(text, tones: toneTitles)
+                } else {
+                    self.generateSuggestions(for: text)
+                }
+                
+            case .lengthChange(let text, _, _):
+                if let length = lengthID {
+                    let lengthTitle = length.prefix(1).uppercased() + length.dropFirst()
+                    self.applyLengthToText(text, length: lengthTitle, tones: toneTitles.isEmpty ? nil : toneTitles)
+                } else if !toneTitles.isEmpty {
+                    self.applyTonesToText(text, tones: toneTitles)
+                } else {
+                    self.generateSuggestions(for: text)
+                }
+                
+            case .replyGeneration(let incomingText, _, _):
+                self.generateReply(to: incomingText, tones: toneTitles.isEmpty ? nil : toneTitles, length: lengthID)
+                
+            case .rewriteGeneration(let originalText, _, _):
+                self.generateRewrite(of: originalText, tones: toneTitles.isEmpty ? nil : toneTitles, length: lengthID)
+                
+            case .photoGeneration(let photos, let context, _, _):
+                self.generateMoreFromPhoto(photos: photos, context: context, tones: toneTitles.isEmpty ? nil : toneTitles, length: lengthID)
+            }
+            
+            print("✅ Regeneration triggered with new preferences")
+        }
     }
     
     // MARK: - Toolbar Button State Management
@@ -343,6 +409,34 @@ final class KeyboardViewController: KeyboardInputViewController {
             object: nil,
             userInfo: ["buttonType": buttonType]
         )
+    }
+    
+    // MARK: - Active View Detection
+    
+    private func closeAnyActiveView() {
+        if suggestionsHosting != nil {
+            hideSuggestionsView()
+        }
+        if tonePickerHosting != nil {
+            hideTonePicker()
+        }
+        if lengthPickerHosting != nil {
+            hideLengthPicker()
+        }
+        if menuPickerHosting != nil {
+            hideMenuPicker()
+        }
+        if clipboardHistoryHosting != nil {
+            hideClipboardHistory()
+        }
+    }
+    
+    private func isAnyViewActive() -> Bool {
+        return suggestionsHosting != nil ||
+               tonePickerHosting != nil ||
+               lengthPickerHosting != nil ||
+               menuPickerHosting != nil ||
+               clipboardHistoryHosting != nil
     }
     
     // Retry the last failed operation
@@ -366,6 +460,12 @@ final class KeyboardViewController: KeyboardInputViewController {
             
         case .photoGeneration(let photos, let context, let tones, let length):
             generateMoreFromPhoto(photos: photos, context: context, tones: tones, length: length)
+            
+        case .replyGeneration(let incomingText, let tones, let length):
+            generateReply(to: incomingText, tones: tones, length: length)
+            
+        case .rewriteGeneration(let originalText, let tones, let length):
+            generateRewrite(of: originalText, tones: tones, length: length)
         }
     }
     
@@ -416,6 +516,12 @@ final class KeyboardViewController: KeyboardInputViewController {
             },
             onUploadButtonTap: { [weak self] in
                 self?.handleUploadButtonTap()
+            },
+            onReplyButtonTap: { [weak self] in
+                self?.handleReplyButtonTap()
+            },
+            onRewriteButtonTap: { [weak self] in
+                self?.handleRewriteButtonTap()
             },
             onMenuButtonTap: { [weak self] in
                 self?.handleMenuButtonTap()
@@ -587,6 +693,218 @@ final class KeyboardViewController: KeyboardInputViewController {
         }
     }
     
+    // MARK: - Reply Button Handling
+
+    private func handleReplyButtonTap() {
+        print("💬 Reply button tapped")
+        
+        // ✅ Check if Reply view is already open (toggle off)
+        if suggestionsHosting != nil && lastVisiblePicker == .suggestions {
+            // Check if this is a Reply operation
+            if case .replyGeneration = suggestionsViewModel.lastOperation {
+                // Same button pressed - toggle off
+                hideSuggestionsView()
+                updateToolbarButtonState(.reply, isActive: false)
+                print("✅ Reply suggestions closed (toggle off)")
+                return
+            }
+        }
+        
+        // ✅ Different button or no view open - direct switch
+        let context = getTextContext()
+        let incomingText = context.fullText
+        
+        guard !incomingText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            print("⚠️ No incoming message to reply to")
+            return
+        }
+        
+        print("📝 Generating reply to: \(incomingText)")
+        
+        // Close any active view (Rewrite, Tone, Length, Menu, etc.)
+        closeAnyActiveView()
+        
+        // Show suggestions view
+        showSuggestionsView()
+        
+        // Set button to active state (purple)
+        updateToolbarButtonState(.reply, isActive: true)
+        
+        // Apply saved preferences
+        let toneTitles = savedTonePreferences.compactMap { toneMapping[$0] }
+        let lengthValue = savedLengthPreference
+        
+        // Store operation for retry
+        suggestionsViewModel.lastOperation = .replyGeneration(
+            incomingText: incomingText,
+            tones: toneTitles.isEmpty ? nil : toneTitles,
+            length: lengthValue
+        )
+        
+        // Generate reply
+        generateReply(to: incomingText, tones: toneTitles.isEmpty ? nil : toneTitles, length: lengthValue)
+        
+        print("✅ Reply suggestions opened (direct switch)")
+    }
+
+    private func generateReply(to incomingText: String, tones: [String]?, length: String?) {
+        let isGenerateMore = !suggestionsViewModel.suggestions.isEmpty
+        let previousOutputs = suggestionsViewModel.suggestions.map { $0.text }
+        
+        if isGenerateMore {
+            suggestionsViewModel.state = .loadingMore
+        } else {
+            suggestionsViewModel.state = .loading
+            suggestionsViewModel.suggestions = []
+            suggestionBatchCount = 0
+        }
+        
+        Task {
+            do {
+                let alternatives = try await KeyboardAIService.shared.generateReply(
+                    for: incomingText,
+                    tones: tones,
+                    length: length,
+                    previousOutputs: previousOutputs
+                )
+                
+                await MainActor.run {
+                    let newSuggestions = alternatives.enumerated().map { index, text in
+                        KeyboardSuggestion(
+                            text: text,
+                            index: suggestionBatchCount * 2 + index
+                        )
+                    }
+                    
+                    if isGenerateMore {
+                        suggestionsViewModel.suggestions.insert(contentsOf: newSuggestions, at: 0)
+                        print("✅ Reply - prepended \(newSuggestions.count) suggestions (total: \(suggestionsViewModel.suggestions.count))")
+                    } else {
+                        suggestionsViewModel.suggestions = newSuggestions
+                        print("✅ Reply - initial \(newSuggestions.count) suggestions")
+                    }
+                    
+                    suggestionBatchCount += 1
+                    suggestionsViewModel.state = .success(suggestionsViewModel.suggestions)
+                    
+                    print("✅ Reply generated successfully - \(alternatives.count) alternatives")
+                }
+            } catch {
+                await MainActor.run {
+                    print("❌ Reply generation failed: \(error)")
+                    let message = (error as? KeyboardAIError)?.errorDescription ?? "Failed to generate reply"
+                    suggestionsViewModel.state = .error(message)
+                }
+            }
+        }
+    }
+    
+    // MARK: - Rewrite Button Handling
+
+    private func handleRewriteButtonTap() {
+        print("✏️ Rewrite button tapped")
+        
+        // ✅ Check if Rewrite view is already open (toggle off)
+        if suggestionsHosting != nil && lastVisiblePicker == .suggestions {
+            // Check if this is a Rewrite operation
+            if case .rewriteGeneration = suggestionsViewModel.lastOperation {
+                // Same button pressed - toggle off
+                hideSuggestionsView()
+                updateToolbarButtonState(.rewrite, isActive: false)
+                print("✅ Rewrite suggestions closed (toggle off)")
+                return
+            }
+        }
+        
+        // ✅ Different button or no view open - direct switch
+        let context = getTextContext()
+        let textToRewrite = context.hasSelection ? (context.selectedText ?? "") : context.fullText
+        
+        guard !textToRewrite.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            print("⚠️ No text to rewrite")
+            return
+        }
+        
+        print("📝 Rewriting text: \(textToRewrite)")
+        
+        // Close any active view
+        closeAnyActiveView()
+        
+        // Show suggestions view
+        showSuggestionsView()
+        
+        // Set button to active state (purple)
+        updateToolbarButtonState(.rewrite, isActive: true)
+        
+        // Apply saved preferences
+        let toneTitles = savedTonePreferences.compactMap { toneMapping[$0] }
+        let lengthValue = savedLengthPreference
+        
+        // Store operation for retry
+        suggestionsViewModel.lastOperation = .rewriteGeneration(
+            originalText: textToRewrite,
+            tones: toneTitles.isEmpty ? nil : toneTitles,
+            length: lengthValue
+        )
+        
+        // Generate rewrite
+        generateRewrite(of: textToRewrite, tones: toneTitles.isEmpty ? nil : toneTitles, length: lengthValue)
+        
+        print("✅ Rewrite suggestions opened (direct switch)")
+    }
+
+    private func generateRewrite(of originalText: String, tones: [String]?, length: String?) {
+        let isGenerateMore = !suggestionsViewModel.suggestions.isEmpty
+        let previousOutputs = suggestionsViewModel.suggestions.map { $0.text }
+        
+        if isGenerateMore {
+            suggestionsViewModel.state = .loadingMore
+        } else {
+            suggestionsViewModel.state = .loading
+            suggestionsViewModel.suggestions = []
+            suggestionBatchCount = 0
+        }
+        
+        Task {
+            do {
+                let alternatives = try await KeyboardAIService.shared.generateRewrite(
+                    for: originalText,
+                    tones: tones,
+                    length: length,
+                    previousOutputs: previousOutputs
+                )
+                
+                await MainActor.run {
+                    let newSuggestions = alternatives.enumerated().map { index, text in
+                        KeyboardSuggestion(
+                            text: text,
+                            index: suggestionBatchCount * 2 + index
+                        )
+                    }
+                    
+                    if isGenerateMore {
+                        suggestionsViewModel.suggestions.insert(contentsOf: newSuggestions, at: 0)
+                        print("✅ Rewrite - prepended \(newSuggestions.count) suggestions (total: \(suggestionsViewModel.suggestions.count))")
+                    } else {
+                        suggestionsViewModel.suggestions = newSuggestions
+                        print("✅ Rewrite - initial \(newSuggestions.count) suggestions")
+                    }
+                    
+                    suggestionBatchCount += 1
+                    suggestionsViewModel.state = .success(suggestionsViewModel.suggestions)
+                    
+                    print("✅ Rewrite generated successfully - \(alternatives.count) alternatives")
+                }
+            } catch {
+                await MainActor.run {
+                    print("❌ Rewrite generation failed: \(error)")
+                    let message = (error as? KeyboardAIError)?.errorDescription ?? "Failed to generate rewrite"
+                    suggestionsViewModel.state = .error(message)
+                }
+            }
+        }
+    }
+    
     private func getTextContext() -> TextContext {
         let fullText = textDocumentProxy.documentContextBeforeInput ?? ""
         let selectedText = textDocumentProxy.selectedText
@@ -617,6 +935,10 @@ final class KeyboardViewController: KeyboardInputViewController {
         if clipboardHistoryHosting != nil {
             hideClipboardHistory()
         }
+        
+        // ✅ NEW: Update viewModel with current preferences BEFORE creating view
+        suggestionsViewModel.currentTones = savedTonePreferences
+        suggestionsViewModel.currentLength = savedLengthPreference
         
         // Create view once with ViewModel
         let suggestionsView = SuggestionsView(viewModel: suggestionsViewModel)
@@ -659,6 +981,10 @@ final class KeyboardViewController: KeyboardInputViewController {
         // CRITICAL: Only clear state if NOT restoring
         if !isRestoringPicker {
             lastVisiblePicker = .none
+            
+            // ✅ Clear active states for Reply and Rewrite buttons when suggestions close
+            updateToolbarButtonState(.reply, isActive: false)
+            updateToolbarButtonState(.rewrite, isActive: false)
         }
         
         hosting.willMove(toParent: nil)
@@ -679,17 +1005,25 @@ final class KeyboardViewController: KeyboardInputViewController {
     private func handleToneButtonTap() {
         print("🎨 Tone button tapped")
         
-        // Toggle logic
+        // ✅ Check if Tone picker is already open (toggle off)
         if tonePickerHosting != nil {
-            // Already open - close it
+            // Same button pressed - toggle off
             hideTonePicker()
             updateToolbarButtonState(.tone, isActive: false)
-        } else {
-            // Closed - open it
-            _ = refreshCurrentTextForPickers()
-            showTonePicker()
-            updateToolbarButtonState(.tone, isActive: true)
+            print("✅ Tone picker closed (toggle off)")
+            return
         }
+        
+        // ✅ Different button or no view open - direct switch
+        _ = refreshCurrentTextForPickers()
+        
+        // Close any active view
+        closeAnyActiveView()
+        
+        // Show tone picker
+        showTonePicker()
+        updateToolbarButtonState(.tone, isActive: true)
+        print("✅ Tone picker opened (direct switch)")
     }
     
     private func showTonePicker() {
@@ -881,16 +1215,23 @@ final class KeyboardViewController: KeyboardInputViewController {
     private func handleLengthButtonTap() {
         print("📏 Length button tapped")
         
-        // Toggle logic
+        // ✅ Check if Length picker is already open (toggle off)
         if lengthPickerHosting != nil {
-            // Already open - close it
+            // Same button pressed - toggle off
             hideLengthPicker()
             updateToolbarButtonState(.length, isActive: false)
-        } else {
-            // Closed - open it
-            showLengthPicker()
-            updateToolbarButtonState(.length, isActive: true)
+            print("✅ Length picker closed (toggle off)")
+            return
         }
+        
+        // ✅ Different button or no view open - direct switch
+        // Close any active view
+        closeAnyActiveView()
+        
+        // Show length picker
+        showLengthPicker()
+        updateToolbarButtonState(.length, isActive: true)
+        print("✅ Length picker opened (direct switch)")
     }
     
     private func showLengthPicker() {
@@ -1201,16 +1542,23 @@ final class KeyboardViewController: KeyboardInputViewController {
     private func handleMenuButtonTap() {
         print("📋 Menu button tapped")
         
-        // Toggle logic
+        // ✅ Check if Menu picker is already open (toggle off)
         if menuPickerHosting != nil {
-            // Already open - close it
+            // Same button pressed - toggle off
             hideMenuPicker()
             updateToolbarButtonState(.menu, isActive: false)
-        } else {
-            // Closed - open it
-            showMenuPicker()
-            updateToolbarButtonState(.menu, isActive: true)
+            print("✅ Menu picker closed (toggle off)")
+            return
         }
+        
+        // ✅ Different button or no view open - direct switch
+        // Close any active view
+        closeAnyActiveView()
+        
+        // Show menu picker
+        showMenuPicker()
+        updateToolbarButtonState(.menu, isActive: true)
+        print("✅ Menu picker opened (direct switch)")
     }
     
     private func showMenuPicker() {
@@ -1455,6 +1803,9 @@ final class KeyboardViewController: KeyboardInputViewController {
     
     private func handleUploadButtonTap() {
         print("🔵 Upload button tapped!")
+        
+        // ✅ Close any active views before opening upload flow
+        closeAnyActiveView()
         
         // Set active state for visual feedback
         updateToolbarButtonState(.upload, isActive: true)

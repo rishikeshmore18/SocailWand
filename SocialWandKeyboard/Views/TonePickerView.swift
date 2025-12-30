@@ -35,6 +35,7 @@ struct TonePickerView: View {
     @State private var showComingSoon: Bool = false
     @State private var savedLengthPreference: String? = nil
     @State private var showLengthDropdown: Bool = false
+    @State private var showToneDropdown: Bool = false  // ✅ NEW
     @State private var showBlurOverlay: Bool = false
     @State private var syncTimer: Timer? = nil
     
@@ -86,14 +87,29 @@ struct TonePickerView: View {
                 // Blur overlay (appears when dropdown is open)
                 blurOverlay
                 
-                // Dropdown menu (high z-index, positioned relative to header)
+                // ✅ Tone Dropdown (positioned on left)
+                if showToneDropdown {
+                    GeometryReader { geo in
+                        VStack {
+                            HStack {
+                                toneDropdownMenu(metrics: metrics)
+                                    .offset(x: 16, y: 72)  // Left side
+                                Spacer()
+                            }
+                            Spacer()
+                        }
+                    }
+                    .zIndex(100)
+                }
+                
+                // ✅ Length Dropdown (positioned on right)
                 if showLengthDropdown {
                     GeometryReader { geo in
                         VStack {
                             HStack {
                                 Spacer()
                                 lengthDropdownMenu(metrics: metrics)
-                                    .offset(x: -16, y: 72)  // 72 = header height (60) + small gap (12)
+                                    .offset(x: -16, y: 72)  // Right side
                             }
                             Spacer()
                         }
@@ -110,10 +126,11 @@ struct TonePickerView: View {
             }
             .overlay(comingSoonToast)
             .onTapGesture {
-                // Close dropdown if tapping outside
-                if showLengthDropdown {
+                // Close any open dropdown if tapping blur
+                if showLengthDropdown || showToneDropdown {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
                         showLengthDropdown = false
+                        showToneDropdown = false
                         showBlurOverlay = false
                     }
                 }
@@ -149,11 +166,9 @@ struct TonePickerView: View {
     }
     
     private func header(metrics: ToneCardMetrics) -> some View {
-        HStack(spacing: 12) {
-            // Left: Selection count
-            Text("\(selectedIDs.count)/\(maxSelections) selected")
-                .font(.system(size: metrics.subtitleFont, weight: .medium))
-                .foregroundColor(.secondary)
+        HStack(spacing: 8) {
+            // Left: Tone dropdown button
+            toneButton(metrics: metrics)
             
             Spacer()
             
@@ -164,6 +179,69 @@ struct TonePickerView: View {
         .padding(.top, 16)
         .padding(.bottom, 12)
         .background(backgroundColor.opacity(0.95))
+    }
+    
+    @ViewBuilder
+    private func toneButton(metrics: ToneCardMetrics) -> some View {
+        if !selectedIDs.isEmpty {
+            // Show selected tones chip
+            Button(action: {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                    showToneDropdown.toggle()
+                    showBlurOverlay = showToneDropdown
+                    if showToneDropdown {
+                        showLengthDropdown = false  // Close length if open
+                    }
+                }
+                triggerHaptic(style: .light)
+            }) {
+                HStack(spacing: 4) {
+                    Text("\(selectedIDs.count)/\(maxSelections) selected")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
+                    
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.8))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    LinearGradient(
+                        colors: [Color(hex: "8B5CF6"), Color(hex: "7C3AED")],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .cornerRadius(16)
+            }
+        } else {
+            // Show "Select Tones" button
+            Button(action: {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                    showToneDropdown.toggle()
+                    showBlurOverlay = showToneDropdown
+                    if showToneDropdown {
+                        showLengthDropdown = false
+                    }
+                }
+                triggerHaptic(style: .light)
+            }) {
+                HStack(spacing: 4) {
+                    Text("Tones")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.primary)
+                    
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.gray.opacity(colorScheme == .dark ? 0.3 : 0.15))
+                .cornerRadius(16)
+            }
+        }
     }
     
     @ViewBuilder
@@ -211,6 +289,9 @@ struct TonePickerView: View {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
                     showLengthDropdown.toggle()
                     showBlurOverlay = showLengthDropdown
+                    if showLengthDropdown {
+                        showToneDropdown = false  // ✅ Close tone if open
+                    }
                 }
                 triggerHaptic(style: .light)
             }) {
@@ -233,6 +314,27 @@ struct TonePickerView: View {
     
     private func lengthDropdownMenu(metrics: ToneCardMetrics) -> some View {
         VStack(spacing: 0) {
+            // ✅ NEW: X Close Button
+            HStack {
+                Spacer()
+                Button(action: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                        showLengthDropdown = false
+                        showBlurOverlay = false
+                    }
+                    triggerHaptic(style: .light)
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(.secondary)
+                        .padding(8)
+                }
+            }
+            .background(colorScheme == .dark ? Color(white: 0.15) : Color.white)
+            
+            Divider()
+            
+            // ✅ Length options (existing code)
             ForEach([
                 LengthOption(id: "short", title: "Short", emoji: "⚡"),
                 LengthOption(id: "medium", title: "Medium", emoji: "⚖️"),
@@ -280,6 +382,115 @@ struct TonePickerView: View {
         )
         .frame(width: 140)
         .transition(.scale(scale: 0.9).combined(with: .opacity))
+    }
+    
+    // ✅ NEW: Tone Dropdown Menu
+    @ViewBuilder
+    private func toneDropdownMenu(metrics: ToneCardMetrics) -> some View {
+        VStack(spacing: 0) {
+            // ✅ X Close Button (fixed at top)
+            HStack {
+                Text("\(selectedIDs.count)/\(maxSelections) selected")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .padding(.leading, 12)
+                
+                Spacer()
+                
+                Button(action: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                        showToneDropdown = false
+                        showBlurOverlay = false
+                    }
+                    triggerHaptic(style: .light)
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(.secondary)
+                        .padding(8)
+                }
+            }
+            .background(colorScheme == .dark ? Color(white: 0.15) : Color.white)
+            
+            Divider()
+            
+            // ✅ Scrollable Tone Options
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(tones.filter { !$0.isComingSoon }) { tone in
+                        Button(action: {
+                            handleToneToggle(tone)
+                        }) {
+                            HStack(spacing: 8) {
+                                Text(tone.emoji)
+                                    .font(.system(size: 16))
+                                
+                                Text(tone.title)
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(.primary)
+                                
+                                Spacer()
+                                
+                                if selectedIDs.contains(tone.id) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(Color(hex: "8B5CF6"))
+                                } else if selectedIDs.count >= maxSelections {
+                                    Image(systemName: "circle")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.secondary.opacity(0.3))
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(
+                                selectedIDs.contains(tone.id)
+                                    ? Color(hex: "8B5CF6").opacity(0.1)
+                                    : Color.clear
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!selectedIDs.contains(tone.id) && selectedIDs.count >= maxSelections)
+                        .opacity((!selectedIDs.contains(tone.id) && selectedIDs.count >= maxSelections) ? 0.5 : 1)
+                        
+                        if tone.id != tones.filter({ !$0.isComingSoon }).last?.id {
+                            Divider()
+                                .padding(.horizontal, 8)
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 280) // ✅ Max height for scrolling
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(colorScheme == .dark ? Color(white: 0.15) : Color.white)
+                .shadow(color: Color.black.opacity(0.15), radius: 12, y: 4)
+        )
+        .frame(width: 200)
+        .transition(.scale(scale: 0.9).combined(with: .opacity))
+    }
+    
+    // ✅ NEW: Handle tone toggle WITHOUT auto-closing
+    private func handleToneToggle(_ tone: ToneOption) {
+        triggerHaptic(style: .light)
+        
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+            if selectedIDs.contains(tone.id) {
+                // Deselect
+                selectedIDs.remove(tone.id)
+            } else if selectedIDs.count < maxSelections {
+                // Select
+                selectedIDs.insert(tone.id)
+            } else {
+                // Max reached
+                triggerHaptic(style: .rigid)
+                return
+            }
+        }
+        
+        // ✅ Auto-save (but DON'T close dropdown)
+        autoSave()
     }
     
     // ✅ NEW: Single Gen button (bottom right corner)
@@ -482,9 +693,13 @@ struct TonePickerView: View {
                 .ignoresSafeArea()
                 .transition(.opacity)
                 .onTapGesture {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                        showLengthDropdown = false
-                        showBlurOverlay = false
+                    // Close any open dropdown if tapping blur
+                    if showLengthDropdown || showToneDropdown {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                            showLengthDropdown = false
+                            showToneDropdown = false
+                            showBlurOverlay = false
+                        }
                     }
                 }
                 .zIndex(99)

@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum ToolbarButtonType {
-    case upload, tone, length, gen, menu
+    case upload, reply, rewrite, tone, length, menu
 }
 
 struct WandToolbar: View {
@@ -9,6 +9,8 @@ struct WandToolbar: View {
     let onToneButtonTap: () -> Void
     let onLengthButtonTap: () -> Void  // ✅ NEW
     let onUploadButtonTap: () -> Void  // ✅ NEW
+    let onReplyButtonTap: () -> Void
+    let onRewriteButtonTap: () -> Void
     let onMenuButtonTap: () -> Void  // ✅ NEW
     let isSuggestionsVisible: () -> Bool
     let onCloseSuggestions: (() -> Void)?
@@ -17,11 +19,13 @@ struct WandToolbar: View {
     @State private var lastVisibleButtonIndex: Int = -1
     @State private var activeButton: ToolbarButtonType? = nil
     
-    init(onWandTap: @escaping () -> Void, onToneButtonTap: @escaping () -> Void, onLengthButtonTap: @escaping () -> Void, onUploadButtonTap: @escaping () -> Void, onMenuButtonTap: @escaping () -> Void, isSuggestionsVisible: @escaping () -> Bool, onCloseSuggestions: (() -> Void)?) {
+    init(onWandTap: @escaping () -> Void, onToneButtonTap: @escaping () -> Void, onLengthButtonTap: @escaping () -> Void, onUploadButtonTap: @escaping () -> Void, onReplyButtonTap: @escaping () -> Void, onRewriteButtonTap: @escaping () -> Void, onMenuButtonTap: @escaping () -> Void, isSuggestionsVisible: @escaping () -> Bool, onCloseSuggestions: (() -> Void)?) {
         self.onWandTap = onWandTap
         self.onToneButtonTap = onToneButtonTap
         self.onLengthButtonTap = onLengthButtonTap
         self.onUploadButtonTap = onUploadButtonTap
+        self.onReplyButtonTap = onReplyButtonTap
+        self.onRewriteButtonTap = onRewriteButtonTap
         self.onMenuButtonTap = onMenuButtonTap
         self.isSuggestionsVisible = isSuggestionsVisible
         self.onCloseSuggestions = onCloseSuggestions
@@ -117,16 +121,17 @@ struct WandToolbar: View {
     private var toolbarButtons: [(icon: String, label: String, type: ToolbarButtonType, action: () -> Void)] {
         return [
             ("photo.on.rectangle", "Upload", .upload, onUploadButtonTap),
+            ("arrowshape.turn.up.left", "Reply", .reply, onReplyButtonTap),
+            ("pencil.line", "Rewrite", .rewrite, onRewriteButtonTap),
             ("waveform", "Tone", .tone, onToneButtonTap),
             ("text.alignleft", "Length", .length, onLengthButtonTap),
-            ("arrow.clockwise", "Gen", .gen, onWandTap),
             ("chevron.down", "Menu", .menu, onMenuButtonTap)
         ]
     }
     
     // Handle button visibility
     private func handleButtonVisibility(_ values: [ButtonVisibilityData]) {
-        // Check if last button (Menu - index 4) is visible
+        // Check if last button (Menu) is visible
         let lastButtonIndex = toolbarButtons.count - 1
         let isLastVisible = values.contains { data in
             data.index == lastButtonIndex && data.frame.maxX > 0
