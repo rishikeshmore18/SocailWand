@@ -167,56 +167,51 @@ struct ClipboardHistoryView: View {
             }
             .allowsHitTesting(true)
             
-            // Overlay buttons (centered vertically, right-aligned, only when selected)
+            // Overlay buttons (centered, only when selected)
             if isSelected {
-                HStack {
-                    Spacer()
-                    
-                    HStack(spacing: 12) {
-                        // Apply/Copy button (text shows "Apply" for text clips, "Copy" for image clips)
-                        Button(action: { pasteClip(clip) }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 14))
-                                Text(clip.type == .image ? "Copy" : "Apply")
-                                    .font(.system(size: 15, weight: .semibold))
+                HStack(spacing: 12) {
+                    // Apply/Copy button (text shows "Apply" for text clips, "Copy" for image clips)
+                    Button(action: { pasteClip(clip) }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 14))
+                            Text(clip.type == .image ? "Copy" : "Apply")
+                                .font(.system(size: 15, weight: .semibold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(
+                            ZStack {
+                                // Blur background
+                                BlurView(style: colorScheme == .dark ? .dark : .light)
+                                
+                                // Purple gradient overlay
+                                LinearGradient(
+                                    colors: [
+                                        Color(hex: "8B5CF6").opacity(0.9),
+                                        Color(hex: "7C3AED").opacity(0.9)
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
                             }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(
-                                ZStack {
-                                    // Blur background
-                                    BlurView(style: colorScheme == .dark ? .dark : .light)
-                                    
-                                    // Purple gradient overlay
-                                    LinearGradient(
-                                        colors: [
-                                            Color(hex: "8B5CF6").opacity(0.9),
-                                            Color(hex: "7C3AED").opacity(0.9)
-                                        ],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                }
-                            )
-                            .cornerRadius(20)
-                            .shadow(color: Color.black.opacity(0.2), radius: 8, y: 4)
-                        }
-                        .buttonStyle(.plain)
-                        
-                        // Trash icon button
-                        Button(action: { deleteClip(clip) }) {
-                            Image(systemName: "trash.fill")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.white)
-                                .padding(8)
-                                .background(Color.red)
-                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
+                        )
+                        .cornerRadius(20)
+                        .shadow(color: Color.black.opacity(0.2), radius: 8, y: 4)
                     }
-                    .padding(.trailing, 60)  // Space for bookmark (prevent overlap)
+                    .buttonStyle(.plain)
+                    
+                    // Trash icon button
+                    Button(action: { deleteClip(clip) }) {
+                        Image(systemName: "trash.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(8)
+                            .background(Color.red)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
                 }
                 .transition(.scale.combined(with: .opacity))
                 .allowsHitTesting(true)

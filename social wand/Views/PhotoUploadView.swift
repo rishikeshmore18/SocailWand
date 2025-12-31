@@ -10,7 +10,7 @@ struct PhotoUploadView: View {
         case pickingPhotos
         case addingContext
         case generating
-        case success([String])
+        case success([[String]])  // ✅ CHANGED: Array of generations, each containing [safe, bold]
     }
     
     @State private var state: UploadState = .pickingPhotos
@@ -23,6 +23,7 @@ struct PhotoUploadView: View {
     @State private var showTonePicker = false
     @State private var showLengthPicker = false
     @State private var returnToApp: String = "Instagram"
+    @State private var allGenerations: [[String]] = []  // ✅ NEW: Store all generations
     
     let sourceApp: String
     
@@ -61,9 +62,9 @@ struct PhotoUploadView: View {
                     contextView
                 case .generating:
                     generatingView
-                case .success(let alternatives):
+                case .success(let allGenerations):
                     GenerationSuccessView(
-                        alternatives: alternatives,
+                        allGenerations: allGenerations,
                         sourceApp: sourceApp,
                         onGenerateAnother: { regenerateCaption() },
                         onGoBack: { state = .addingContext },
@@ -469,7 +470,11 @@ struct PhotoUploadView: View {
                     length: lengthTitle
                 )
                 
-                await MainActor.run { state = .success(alternatives) }
+                await MainActor.run {
+                    // ✅ NEW: Prepend new generation to array
+                    allGenerations.insert(alternatives, at: 0)
+                    state = .success(allGenerations)
+                }
                 
             } catch {
                 await MainActor.run {
@@ -568,7 +573,11 @@ struct PhotoUploadView: View {
                     length: lengthTitle
                 )
                 
-                await MainActor.run { state = .success(alternatives) }
+                await MainActor.run {
+                    // ✅ NEW: Prepend new generation to array
+                    allGenerations.insert(alternatives, at: 0)
+                    state = .success(allGenerations)
+                }
                 
             } catch {
                 await MainActor.run {
@@ -585,6 +594,7 @@ struct PhotoUploadView: View {
         state = .pickingPhotos
         selectedPhotos = []
         context = ""
+        allGenerations = []  // ✅ NEW: Reset generations when starting fresh
         errorMessage = nil
         showPhotoPicker = true
         print("✅ Reset complete - picker will appear")

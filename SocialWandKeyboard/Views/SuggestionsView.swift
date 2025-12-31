@@ -225,38 +225,9 @@ struct SuggestionsView: View {
     private func suggestionCard(text: String, badge: String, badgeColor: Color, index: Int) -> some View {
         let isSelected = selectedSuggestionIndex == index
         
-        return ZStack(alignment: .topTrailing) {
+        return ZStack {
             // Main card content
-            VStack(alignment: .leading, spacing: 12) {
-                // Badge
-                HStack {
-                    Text(badge)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(badgeColor)
-                        .cornerRadius(8)
-                    Spacer()
-                }
-                
-                // Text
-                Text(text)
-                    .font(.system(size: 15))
-                    .foregroundColor(.primary)
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(nil)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(16)
-            .background(cardBackground)
-            .cornerRadius(12)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(isSelected ? Color(hex: "8B5CF6") : Color.clear, lineWidth: 2)
-            )
-            .contentShape(Rectangle())
-            .onTapGesture {
+            Button(action: {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
                     if selectedSuggestionIndex == index {
                         // Deselect if tapping the same card
@@ -270,9 +241,42 @@ struct SuggestionsView: View {
                 // Haptic feedback
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
+            }) {
+                VStack(alignment: .leading, spacing: 12) {
+                    // Badge
+                    HStack {
+                        Text(badge)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(badgeColor)
+                            .cornerRadius(8)
+                        Spacer()
+                    }
+                    
+                    // Text
+                    Text(text)
+                        .font(.system(size: 15))
+                        .foregroundColor(.primary)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(nil)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .blur(radius: isSelected ? 2 : 0)  // ✅ NEW: Blur content when selected
+                .animation(.easeInOut(duration: 0.2), value: isSelected)  // ✅ NEW: Smooth blur transition
+                .padding(16)
+                .background(cardBackground)
+                .cornerRadius(12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(isSelected ? Color(hex: "8B5CF6") : Color.clear, lineWidth: 2)
+                )
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             
-            // Overlay Apply button (only shows when selected)
+            // ✅ NEW: Centered Apply button overlay (only shows when selected)
             if isSelected {
                 Button(action: {
                     viewModel.onApply?(text)
@@ -309,11 +313,11 @@ struct SuggestionsView: View {
                     .cornerRadius(20)
                     .shadow(color: Color.black.opacity(0.2), radius: 8, y: 4)
                 }
-                .padding(.top, 16)
-                .padding(.trailing, 16)
                 .transition(.scale.combined(with: .opacity))
+                .allowsHitTesting(true)  // ✅ NEW: Ensure button is clickable
             }
         }
+        .animation(.spring(response: 0.3, dampingFraction: 0.75), value: isSelected)  // ✅ NEW: Smooth animation
         .padding(.horizontal, 16)
     }
     

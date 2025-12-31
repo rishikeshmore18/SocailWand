@@ -6,16 +6,31 @@
 import SwiftUI
 
 struct GenerationSuccessView: View {
-    let alternatives: [String]  // Array of [safe, bold]
+    let allGenerations: [[String]]  // Array of generations, each containing [safe, bold]
     let sourceApp: String
     let onGenerateAnother: () -> Void
-    let onGoBack: () -> Void  // NEW: Callback to go back to context screen
-    let onGoHome: () -> Void  // NEW: Callback to go home (dismiss entire flow)
+    let onGoBack: () -> Void
+    let onGoHome: () -> Void
     
-    @State private var selectedIndex: Int = 0  // Default to Safe (index 0)
+    @State private var selectedGenerationIndex: Int = 0  // Which generation (batch)
+    @State private var selectedAlternativeIndex: Int = 0  // Which alternative (safe/bold)
     @State private var showCopied = false
     @State private var isReturning = false
     @Environment(\.dismiss) var dismiss
+    
+    // Computed property for flattened alternatives with metadata
+    private var flattenedAlternatives: [(text: String, generationIndex: Int, alternativeIndex: Int, badge: String)] {
+        allGenerations.enumerated().flatMap { genIndex, alternatives in
+            alternatives.enumerated().map { altIndex, text in
+                (
+                    text: text,
+                    generationIndex: genIndex,
+                    alternativeIndex: altIndex,
+                    badge: altIndex == 0 ? "Safe" : "Bold"
+                )
+            }
+        }
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -43,14 +58,28 @@ struct GenerationSuccessView: View {
             // SCROLLABLE MESSAGES SECTION
             ScrollView {
                 VStack(spacing: 12) {
-                    ForEach(Array(alternatives.enumerated()), id: \.offset) { index, text in
-                        messageCard(text: text, index: index, badge: index == 0 ? "Safe" : "Bold")
+                    ForEach(Array(allGenerations.enumerated()), id: \.offset) { genIndex, alternatives in
+                        // Batch separator (except before first generation)
+                        if genIndex > 0 {
+                            batchSeparator
+                                .padding(.vertical, 12)
+                        }
+                        
+                        // Generation cards (Safe + Bold)
+                        ForEach(Array(alternatives.enumerated()), id: \.offset) { altIndex, text in
+                            messageCard(
+                                text: text,
+                                generationIndex: genIndex,
+                                alternativeIndex: altIndex,
+                                badge: altIndex == 0 ? "Safe" : "Bold"
+                            )
+                        }
                     }
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
             }
-            .frame(maxHeight: .infinity)  // Takes available space between top and buttons
+            .frame(maxHeight: .infinity)
             
             Spacer()
             
@@ -100,6 +129,17 @@ struct GenerationSuccessView: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 32)
         }
+        .navigationBarBackButtonHidden(true)  // ✅ Hide default back button since we have custom one
+        .gesture(
+            // ✅ NEW: Enable swipe-back gesture
+            DragGesture()
+                .onEnded { gesture in
+                    // Detect swipe from left edge to right (>100 points horizontal movement)
+                    if gesture.translation.width > 100 && gesture.translation.height < 50 && gesture.translation.height > -50 {
+                        onGoBack()
+                    }
+                }
+        )
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button(action: {
@@ -115,7 +155,7 @@ struct GenerationSuccessView: View {
                 }
             }
             
-            // NEW: Home button on right side
+            // Home button on right side
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: {
                     onGoHome()
@@ -133,7 +173,9 @@ struct GenerationSuccessView: View {
     }
     
     @ViewBuilder
-    private func messageCard(text: String, index: Int, badge: String) -> some View {
+    private func messageCard(text: String, generationIndex: Int, alternativeIndex: Int, badge: String) -> some View {
+        let isSelected = selectedGenerationIndex == generationIndex && selectedAlternativeIndex == alternativeIndex
+        
         VStack(alignment: .leading, spacing: 12) {
             // Badge (Safe = green, Bold = purple)
             HStack {
@@ -162,11 +204,12 @@ struct GenerationSuccessView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(selectedIndex == index ? Color(hex: "8B5CF6") : Color.clear, lineWidth: 3)
+                .stroke(isSelected ? Color(hex: "8B5CF6") : Color.clear, lineWidth: 3)
         )
         .onTapGesture {
             withAnimation(.spring(response: 0.3)) {
-                selectedIndex = index
+                selectedGenerationIndex = generationIndex
+                selectedAlternativeIndex = alternativeIndex
             }
             // Haptic feedback
             let generator = UIImpactFeedbackGenerator(style: .medium)
@@ -175,12 +218,18 @@ struct GenerationSuccessView: View {
     }
     
     private func copyAndReturn() {
-        // Ensure selectedIndex is valid
-        guard selectedIndex >= 0 && selectedIndex < alternatives.count else {
+        // Ensure selection is valid
+        guard selectedGenerationIndex >= 0 && selectedGenerationIndex < allGenerations.count else {
             return
         }
         
-        let selectedMessage = alternatives[selectedIndex]
+        let generation = allGenerations[selectedGenerationIndex]
+        
+        guard selectedAlternativeIndex >= 0 && selectedAlternativeIndex < generation.count else {
+            return
+        }
+        
+        let selectedMessage = generation[selectedAlternativeIndex]
         
         // 1. Copy to clipboard
         UIPasteboard.general.string = selectedMessage
@@ -206,10 +255,18 @@ struct GenerationSuccessView: View {
                 showCopied = false
             }
         }
-        
-        // NOTE: Screen stays open - user can still see caption
-        // User must click "Home" button to return to main screen
+    }
+    
+    private var batchSeparator: some View {
+        Rectangle()
+            .fill(Color.gray.opacity(0.2))
+            .frame(height: 1)
+            .overlay(
+                Text("Previous")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 12)
+                    .background(Color(.systemBackground))
+            )
     }
 }
-
-
