@@ -13,6 +13,7 @@ struct social_wandApp: App {
     @State private var showPhotoUpload = false
     @State private var photoUploadSourceApp = "instagram"
     @State private var uploadSessionID = UUID()  // NEW: Forces view recreation
+    @State private var showSettings = false  // ✅ NEW: Track settings navigation
     
     var body: some Scene {
         WindowGroup {
@@ -34,6 +35,11 @@ struct social_wandApp: App {
             .fullScreenCover(isPresented: $showPhotoUpload) {
                 PhotoUploadView(sourceApp: photoUploadSourceApp)
                     .id(uploadSessionID)  // Forces new instance on each upload
+            }
+            .sheet(isPresented: $showSettings) {
+                NavigationStack {
+                    SettingsView()
+                }
             }
         }
     }
@@ -73,9 +79,22 @@ struct social_wandApp: App {
     private func handleURL(_ url: URL) {
         print("🔗 URL received: \(url)")
         
-        guard url.scheme == "socialwand",
-              url.host == "upload" else {
-            print("❌ Invalid URL scheme or host")
+        guard url.scheme == "socialwand" else {
+            print("❌ Invalid URL scheme")
+            return
+        }
+        
+        // Handle settings URL
+        if url.host == "settings" {
+            print("✅ Valid socialwand://settings URL")
+            print("🚀 Showing SettingsView")
+            showSettings = true
+            return
+        }
+        
+        // Handle upload URL
+        guard url.host == "upload" else {
+            print("❌ Invalid URL host: \(url.host ?? "nil")")
             return
         }
         
@@ -96,7 +115,7 @@ struct social_wandApp: App {
         // CRITICAL: Generate new session ID to force view recreation
         uploadSessionID = UUID()
         print("🔄 Generated new upload session: \(uploadSessionID)")
-        
+
         print("🚀 Showing PhotoUploadView")
         showPhotoUpload = true
     }

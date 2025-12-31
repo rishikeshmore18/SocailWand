@@ -165,7 +165,7 @@ struct ClipboardHistoryView: View {
             Text("No saved clips")
                 .font(.system(size: 20, weight: .bold))
             
-            Text("Tap 'Paste to Wand Clipboard' to save items")
+            Text("Tap 'Save' to save items")
                 .font(.system(size: 15))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)

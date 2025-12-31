@@ -526,6 +526,15 @@ final class KeyboardViewController: KeyboardInputViewController {
             onMenuButtonTap: { [weak self] in
                 self?.handleMenuButtonTap()
             },
+            onSaveButtonTap: { [weak self] in
+                self?.handlePasteAction()
+            },
+            onClipboardButtonTap: { [weak self] in
+                self?.handleClipboardAction()
+            },
+            onSettingsButtonTap: { [weak self] in
+                self?.handleSettingsAction()
+            },
             isSuggestionsVisible: { [weak self] in
                 return (self?.suggestionsHosting != nil) ||
                        (self?.tonePickerHosting != nil) ||
@@ -1733,7 +1742,7 @@ final class KeyboardViewController: KeyboardInputViewController {
         }
         
         hideClipboardHistory()
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        triggerHaptic(style: .medium)
     }
     
     private func handleSettingsAction() {
@@ -1762,8 +1771,7 @@ final class KeyboardViewController: KeyboardInputViewController {
                 application.open(url, options: [:], completionHandler: nil)
                 didOpen = true
                 
-                let generator = UIImpactFeedbackGenerator(style: .medium)
-                generator.impactOccurred()
+                triggerHaptic(style: .medium)
                 
                 print("✅ App should be opening settings now!")
                 break
@@ -1781,8 +1789,7 @@ final class KeyboardViewController: KeyboardInputViewController {
                     function(currentResponder, performSelector, url, options, nil)
                     didOpen = true
                     
-                    let generator = UIImpactFeedbackGenerator(style: .medium)
-                    generator.impactOccurred()
+                    triggerHaptic(style: .medium)
                     
                     break
                 }
@@ -1860,8 +1867,7 @@ final class KeyboardViewController: KeyboardInputViewController {
                 application.open(url, options: [:], completionHandler: nil)
                 didOpen = true
                 
-                let generator = UIImpactFeedbackGenerator(style: .medium)
-                generator.impactOccurred()
+                triggerHaptic(style: .medium)
                 
                 print("✅ App should be opening now via MODERN API!")
                 break
@@ -1881,8 +1887,7 @@ final class KeyboardViewController: KeyboardInputViewController {
                     function(currentResponder, performSelector, url, options, nil)
                     didOpen = true
                     
-                    let generator = UIImpactFeedbackGenerator(style: .medium)
-                    generator.impactOccurred()
+                    triggerHaptic(style: .medium)
                     
                     print("✅ Called open:options:completionHandler: on \(type(of: currentResponder))")
                     break
@@ -2024,6 +2029,56 @@ final class KeyboardViewController: KeyboardInputViewController {
     
     private func expandToolbar() {
         NotificationCenter.default.post(name: NSNotification.Name("ExpandToolbar"), object: nil)
+    }
+    
+    // MARK: - Haptic Feedback Helper
+    
+    /// Triggers haptic feedback based on user's haptic setting
+    private func triggerHaptic(style: UIImpactFeedbackGenerator.FeedbackStyle = .medium) {
+        guard let defaults = UserDefaults(suiteName: SharedConstants.appGroupID) else {
+            // Fallback to default if can't access settings
+            UIImpactFeedbackGenerator(style: style).impactOccurred()
+            return
+        }
+        
+        let hapticLevel = defaults.string(forKey: "HapticFeedbackLevel") ?? "soft"
+        
+        switch hapticLevel {
+        case "soft":
+            // Use light style for soft, but keep original style for medium/heavy
+            let adjustedStyle: UIImpactFeedbackGenerator.FeedbackStyle = (style == .heavy) ? .medium : .light
+            UIImpactFeedbackGenerator(style: adjustedStyle).impactOccurred()
+        case "strong":
+            // Use heavy style for strong
+            UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+        case "off":
+            // No haptic
+            break
+        default:
+            UIImpactFeedbackGenerator(style: style).impactOccurred()
+        }
+    }
+    
+    /// Triggers scroll haptic feedback (rigid for detent feel)
+    private func triggerScrollHaptic() {
+        guard let defaults = UserDefaults(suiteName: SharedConstants.appGroupID) else {
+            UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+            return
+        }
+        
+        let hapticLevel = defaults.string(forKey: "HapticFeedbackLevel") ?? "soft"
+        
+        switch hapticLevel {
+        case "soft":
+            UIImpactFeedbackGenerator(style: .rigid).impactOccurred()  // Keep rigid for scroll
+        case "strong":
+            UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+        case "off":
+            // No haptic
+            break
+        default:
+            UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+        }
     }
     
     // MARK: - Text Insertion

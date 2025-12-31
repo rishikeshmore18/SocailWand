@@ -12,6 +12,9 @@ struct WandToolbar: View {
     let onReplyButtonTap: () -> Void
     let onRewriteButtonTap: () -> Void
     let onMenuButtonTap: () -> Void  // ✅ NEW
+    let onSaveButtonTap: (() -> Void)?  // ✅ NEW: Optional callback for Save action
+    let onClipboardButtonTap: (() -> Void)?  // ✅ NEW: Optional callback for Clipboard action
+    let onSettingsButtonTap: (() -> Void)?  // ✅ NEW: Optional callback for Settings action
     let isSuggestionsVisible: () -> Bool
     let onCloseSuggestions: (() -> Void)?
     @State private var isExpanded = false
@@ -19,7 +22,7 @@ struct WandToolbar: View {
     @State private var lastVisibleButtonIndex: Int = -1
     @State private var activeButton: ToolbarButtonType? = nil
     
-    init(onWandTap: @escaping () -> Void, onToneButtonTap: @escaping () -> Void, onLengthButtonTap: @escaping () -> Void, onUploadButtonTap: @escaping () -> Void, onReplyButtonTap: @escaping () -> Void, onRewriteButtonTap: @escaping () -> Void, onMenuButtonTap: @escaping () -> Void, isSuggestionsVisible: @escaping () -> Bool, onCloseSuggestions: (() -> Void)?) {
+    init(onWandTap: @escaping () -> Void, onToneButtonTap: @escaping () -> Void, onLengthButtonTap: @escaping () -> Void, onUploadButtonTap: @escaping () -> Void, onReplyButtonTap: @escaping () -> Void, onRewriteButtonTap: @escaping () -> Void, onMenuButtonTap: @escaping () -> Void, onSaveButtonTap: (() -> Void)? = nil, onClipboardButtonTap: (() -> Void)? = nil, onSettingsButtonTap: (() -> Void)? = nil, isSuggestionsVisible: @escaping () -> Bool, onCloseSuggestions: (() -> Void)?) {
         self.onWandTap = onWandTap
         self.onToneButtonTap = onToneButtonTap
         self.onLengthButtonTap = onLengthButtonTap
@@ -27,6 +30,9 @@ struct WandToolbar: View {
         self.onReplyButtonTap = onReplyButtonTap
         self.onRewriteButtonTap = onRewriteButtonTap
         self.onMenuButtonTap = onMenuButtonTap
+        self.onSaveButtonTap = onSaveButtonTap
+        self.onClipboardButtonTap = onClipboardButtonTap
+        self.onSettingsButtonTap = onSettingsButtonTap
         self.isSuggestionsVisible = isSuggestionsVisible
         self.onCloseSuggestions = onCloseSuggestions
     }
@@ -119,14 +125,77 @@ struct WandToolbar: View {
     
     // Toolbar button definitions
     private var toolbarButtons: [(icon: String, label: String, type: ToolbarButtonType, action: () -> Void)] {
-        return [
-            ("photo.on.rectangle", "Upload", .upload, onUploadButtonTap),
-            ("arrowshape.turn.up.left", "Reply", .reply, onReplyButtonTap),
-            ("pencil.line", "Rewrite", .rewrite, onRewriteButtonTap),
-            ("waveform", "Tone", .tone, onToneButtonTap),
-            ("text.alignleft", "Length", .length, onLengthButtonTap),
-            ("chevron.down", "Menu", .menu, onMenuButtonTap)
+        let appGroupID = "group.rishi-more.social-wand"
+        
+        // ALL available buttons (including menu actions)
+        let allButtons: [(id: String, icon: String, label: String, type: ToolbarButtonType, action: () -> Void)] = [
+            ("upload", "photo.on.rectangle", "Upload", .upload, onUploadButtonTap),
+            ("reply", "arrowshape.turn.up.left", "Reply", .reply, onReplyButtonTap),
+            ("rewrite", "pencil.line", "Rewrite", .rewrite, onRewriteButtonTap),
+            ("tone", "waveform", "Tone", .tone, onToneButtonTap),
+            ("length", "text.alignleft", "Length", .length, onLengthButtonTap),
+            // ✅ NEW: Menu buttons (can now appear in toolbar if in positions 1-4)
+            ("save", "square.and.arrow.down", "Save", .menu, {
+                // If callback provided, use it; otherwise open menu
+                if let saveAction = onSaveButtonTap {
+                    saveAction()
+                } else {
+                    onMenuButtonTap()
+                }
+            }),
+            ("clipboard", "list.clipboard", "Clipboard", .menu, {
+                if let clipboardAction = onClipboardButtonTap {
+                    clipboardAction()
+                } else {
+                    onMenuButtonTap()
+                }
+            }),
+            ("settings", "gearshape", "Settings", .menu, {
+                if let settingsAction = onSettingsButtonTap {
+                    settingsAction()
+                } else {
+                    onMenuButtonTap()
+                }
+            })
         ]
+        
+        // Try to load saved order
+        if let defaults = UserDefaults(suiteName: appGroupID),
+           let savedOrder = defaults.stringArray(forKey: "ToolbarButtonOrder") {
+            
+            // Take ONLY FIRST 4 buttons from saved order (rest go to menu)
+            let toolbarButtonIDs = Array(savedOrder.prefix(4))
+            
+            // Map IDs to button definitions
+            var orderedButtons: [(icon: String, label: String, type: ToolbarButtonType, action: () -> Void)] = []
+            
+            for id in toolbarButtonIDs {
+                if let button = allButtons.first(where: { $0.id == id }) {
+                    orderedButtons.append((button.icon, button.label, button.type, button.action))
+                }
+            }
+            
+            // If less than 4 buttons in saved order, fill with defaults
+            if orderedButtons.count < 4 {
+                let existingIDs = Set(toolbarButtonIDs)
+                let remainingButtons = allButtons.filter { !existingIDs.contains($0.id) }
+                
+                for button in remainingButtons.prefix(4 - orderedButtons.count) {
+                    orderedButtons.append((button.icon, button.label, button.type, button.action))
+                }
+            }
+            
+            // Always append Menu button at the end (position 5)
+            orderedButtons.append(("chevron.down", "Menu", .menu, onMenuButtonTap))
+            
+            return orderedButtons
+        }
+        
+        // No saved order - use first 4 from allButtons + Menu
+        let defaultToolbarButtons = Array(allButtons.prefix(4))
+        var buttons = defaultToolbarButtons.map { ($0.icon, $0.label, $0.type, $0.action) }
+        buttons.append(("chevron.down", "Menu", .menu, onMenuButtonTap))
+        return buttons
     }
     
     // Handle button visibility

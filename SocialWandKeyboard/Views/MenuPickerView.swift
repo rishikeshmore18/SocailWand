@@ -27,12 +27,47 @@ struct MenuPickerView: View {
     
     @Environment(\.colorScheme) var colorScheme
     
-    private let menuOptions: [MenuOption] = [
-        MenuOption(id: "paste", title: "Paste to Wand Clipboard", icon: "doc.on.clipboard", isComingSoon: false),
-        MenuOption(id: "clipboard", title: "Clipboard", icon: "list.clipboard", isComingSoon: false),
-        MenuOption(id: "settings", title: "Settings", icon: "gearshape", isComingSoon: false),
-        MenuOption(id: "comingSoon", title: "Coming Soon", icon: "sparkles", isComingSoon: true)
-    ]
+    private var menuOptions: [MenuOption] {
+        let appGroupID = "group.rishi-more.social-wand"
+        
+        // All possible menu options (with correct IDs matching button order)
+        let allOptions: [String: MenuOption] = [
+            "upload": MenuOption(id: "upload", title: "Upload", icon: "photo.on.rectangle", isComingSoon: false),
+            "reply": MenuOption(id: "reply", title: "Reply", icon: "arrowshape.turn.up.left", isComingSoon: false),
+            "rewrite": MenuOption(id: "rewrite", title: "Rewrite", icon: "pencil.line", isComingSoon: false),
+            "tone": MenuOption(id: "tone", title: "Tone", icon: "waveform", isComingSoon: false),
+            "length": MenuOption(id: "length", title: "Length", icon: "text.alignleft", isComingSoon: false),
+            "save": MenuOption(id: "save", title: "Save", icon: "square.and.arrow.down", isComingSoon: false),
+            "clipboard": MenuOption(id: "clipboard", title: "Clipboard", icon: "list.clipboard", isComingSoon: false),
+            "settings": MenuOption(id: "settings", title: "Settings", icon: "gearshape", isComingSoon: false)
+        ]
+        
+        // Try to load saved order
+        if let defaults = UserDefaults(suiteName: appGroupID),
+           let savedOrder = defaults.stringArray(forKey: "ToolbarButtonOrder") {
+            
+            // Menu shows buttons 5-8 (indices 4-7)
+            let menuButtonIDs = Array(savedOrder.dropFirst(4))
+            
+            // Map IDs to menu options
+            var options: [MenuOption] = menuButtonIDs.compactMap { allOptions[$0] }
+            
+            // Always add "Coming Soon" at the end
+            options.append(MenuOption(id: "comingSoon", title: "Coming Soon", icon: "sparkles", isComingSoon: true))
+            
+            return options
+        }
+        
+        // No saved order - show default menu buttons (Length, Save, Clipboard, Settings)
+        // Default button order: Upload, Reply, Rewrite, Tone (toolbar) | Length, Save, Clipboard, Settings (menu)
+        return [
+            MenuOption(id: "length", title: "Length", icon: "text.alignleft", isComingSoon: false),
+            MenuOption(id: "save", title: "Save", icon: "square.and.arrow.down", isComingSoon: false),
+            MenuOption(id: "clipboard", title: "Clipboard", icon: "list.clipboard", isComingSoon: false),
+            MenuOption(id: "settings", title: "Settings", icon: "gearshape", isComingSoon: false),
+            MenuOption(id: "comingSoon", title: "Coming Soon", icon: "sparkles", isComingSoon: true)
+        ]
+    }
     
     var body: some View {
         GeometryReader { geometry in
@@ -109,8 +144,9 @@ struct MenuPickerView: View {
             return
         }
         
+        // Handle menu option based on ID
         switch option.id {
-        case "paste":
+        case "save":  // Changed from "paste"
             triggerHaptic(style: .medium)
             onPaste()
         case "clipboard":
@@ -119,6 +155,10 @@ struct MenuPickerView: View {
         case "settings":
             triggerHaptic(style: .medium)
             onSettings()
+        // ✅ NEW: If toolbar buttons appear in menu, close menu (they have their own actions)
+        case "upload", "reply", "rewrite", "tone", "length":
+            triggerHaptic(style: .light)
+            onCancel()  // Just close menu - these buttons shouldn't be in menu normally
         default:
             break
         }
