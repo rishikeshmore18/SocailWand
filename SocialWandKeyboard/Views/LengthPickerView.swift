@@ -77,7 +77,7 @@ struct LengthPickerView: View {
             .onAppear {
                 syncSelectionFromSavedPreference()
             }
-            .onChange(of: savedPreference) { _ in
+            .onChange(of: savedPreference) { oldValue, newValue in
                 // If the parent loads/saves from App Group asynchronously,
                 // this keeps the UI (and Gen button) consistent.
                 syncSelectionFromSavedPreference()

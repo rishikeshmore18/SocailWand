@@ -45,10 +45,6 @@ struct ClipboardHistoryView: View {
                             .padding(.bottom, metrics.bottomPadding)
                         }
                     }
-                    
-                    if selectedID != nil {
-                        bottomButtons(metrics: metrics)
-                    }
                 }
             }
         }
@@ -89,8 +85,10 @@ struct ClipboardHistoryView: View {
     private func clipCard(clip: ClipboardItem, metrics: ClipboardMetrics) -> some View {
         let isSelected = selectedID == clip.id
         
-        return Button(action: { toggleSelection(for: clip.id) }) {
-            ZStack(alignment: .topTrailing) {
+        return ZStack {
+            // Main card button (for tap to select)
+            Button(action: { toggleSelection(for: clip.id) }) {
+                // Content section
                 VStack(alignment: .leading, spacing: 10) {
                     if clip.type == .text, let text = clip.textContent {
                         Text(text)
@@ -99,34 +97,45 @@ struct ClipboardHistoryView: View {
                             .lineLimit(2)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     } else if clip.type == .image {
-                        HStack(spacing: 10) {
-                            // Lazy-loaded thumbnail
-                            if let thumbFilename = clip.thumbnailFilename,
-                               let thumbnail = loadedThumbnails[thumbFilename] {
-                                Image(uiImage: thumbnail)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 48, height: 48)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            } else {
-                                // Placeholder while loading
-                                Image(systemName: "photo")
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 10) {
+                                // Lazy-loaded thumbnail
+                                if let thumbFilename = clip.thumbnailFilename,
+                                   let thumbnail = loadedThumbnails[thumbFilename] {
+                                    Image(uiImage: thumbnail)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 48, height: 48)
+                                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                } else {
+                                    // Placeholder while loading
+                                    Image(systemName: "photo")
+                                        .font(.system(size: metrics.titleFont, weight: .semibold))
+                                        .frame(width: 48, height: 48)
+                                        .background(Color.gray.opacity(0.15))
+                                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                }
+                                
+                                Text("Image")
                                     .font(.system(size: metrics.titleFont, weight: .semibold))
-                                    .frame(width: 48, height: 48)
-                                    .background(Color.gray.opacity(0.15))
-                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    .foregroundColor(.primary)
+                                
+                                Spacer()
                             }
                             
-                            Text("Image • Tap to paste")
-                                .font(.system(size: metrics.titleFont))
-                                .foregroundColor(.primary)
-                                .lineLimit(2)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            
-                            Spacer()
+                            // Clear instructions for images
+                            HStack(spacing: 4) {
+                                Text("💡")
+                                    .font(.system(size: 12))
+                                Text("Tap to copy → Paste in text field")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(.secondary)
+                            }
                         }
                     }
                 }
+                .blur(radius: isSelected ? 2 : 0)  // ✅ NEW: Blur content when selected
+                .animation(.easeInOut(duration: 0.2), value: isSelected)  // ✅ NEW: Smooth blur transition
                 .padding(.horizontal, metrics.cardHorizontalPadding)
                 .padding(.vertical, metrics.cardVerticalPadding)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -140,15 +149,80 @@ struct ClipboardHistoryView: View {
                 )
                 .clipShape(RoundedRectangle(cornerRadius: metrics.cornerRadius, style: .continuous))
                 .shadow(color: isSelected ? Color(hex: "8B5CF6").opacity(0.15) : .clear, radius: 8, y: 4)
-                
-                // Bookmark icon
-                Button(action: { toggleBookmark(clip) }) {
-                    bookmarkIcon(isOn: clip.isBookmarked)
-                        .padding(10)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            
+            // Bookmark icon (top-right, always visible)
+            VStack {
+                HStack {
+                    Spacer()
+                    Button(action: { toggleBookmark(clip) }) {
+                        bookmarkIcon(isOn: clip.isBookmarked)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(10)
                 }
+                Spacer()
+            }
+            .allowsHitTesting(true)
+            
+            // Overlay buttons (centered vertically, right-aligned, only when selected)
+            if isSelected {
+                HStack {
+                    Spacer()
+                    
+                    HStack(spacing: 12) {
+                        // Apply/Copy button (text shows "Apply" for text clips, "Copy" for image clips)
+                        Button(action: { pasteClip(clip) }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 14))
+                                Text(clip.type == .image ? "Copy" : "Apply")
+                                    .font(.system(size: 15, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(
+                                ZStack {
+                                    // Blur background
+                                    BlurView(style: colorScheme == .dark ? .dark : .light)
+                                    
+                                    // Purple gradient overlay
+                                    LinearGradient(
+                                        colors: [
+                                            Color(hex: "8B5CF6").opacity(0.9),
+                                            Color(hex: "7C3AED").opacity(0.9)
+                                        ],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                }
+                            )
+                            .cornerRadius(20)
+                            .shadow(color: Color.black.opacity(0.2), radius: 8, y: 4)
+                        }
+                        .buttonStyle(.plain)
+                        
+                        // Trash icon button
+                        Button(action: { deleteClip(clip) }) {
+                            Image(systemName: "trash.fill")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(.white)
+                                .padding(8)
+                                .background(Color.red)
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.trailing, 60)  // Space for bookmark (prevent overlap)
+                }
+                .transition(.scale.combined(with: .opacity))
+                .allowsHitTesting(true)
             }
         }
-        .buttonStyle(.plain)
+        .animation(.spring(response: 0.3, dampingFraction: 0.75), value: isSelected)
     }
     
     @ViewBuilder
@@ -174,36 +248,6 @@ struct ClipboardHistoryView: View {
                         )
                 )
         }
-    }
-    
-    // MARK: - Bottom Buttons
-    
-    private func bottomButtons(metrics: ClipboardMetrics) -> some View {
-        VStack {
-            Spacer()
-            HStack(spacing: metrics.buttonSpacing) {
-                Button(action: pasteSelected) {
-                    Text("Paste")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: metrics.buttonWidth, height: metrics.buttonHeight)
-                }
-                .buttonStyle(CornerButtonStyle(color: Color(hex: "8B5CF6")))
-                
-                Spacer()
-                
-                Button(action: deleteSelected) {
-                    Text("Delete")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: metrics.buttonWidth, height: metrics.buttonHeight)
-                }
-                .buttonStyle(CornerButtonStyle(color: Color.red))
-            }
-            .padding(.horizontal, metrics.horizontalPadding)
-            .padding(.bottom, 16)
-        }
-        .ignoresSafeArea(edges: .bottom)
     }
     
     // MARK: - Empty State
@@ -247,24 +291,23 @@ struct ClipboardHistoryView: View {
     
     private func toggleSelection(for id: String) {
         if selectedID == id {
+            // Deselecting
             selectedID = nil
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } else {
+            // Selecting
             selectedID = id
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         }
     }
     
-    private func pasteSelected() {
-        guard let id = selectedID,
-              let clip = clips.first(where: { $0.id == id }) else { return }
-        
+    private func pasteClip(_ clip: ClipboardItem) {
         onPaste(clip)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
     
-    private func deleteSelected() {
-        guard let id = selectedID else { return }
-        
-        _ = ClipboardManager.shared.deleteClip(clipID: id)
+    private func deleteClip(_ clip: ClipboardItem) {
+        _ = ClipboardManager.shared.deleteClip(clipID: clip.id)
         selectedID = nil
         loadClips()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()

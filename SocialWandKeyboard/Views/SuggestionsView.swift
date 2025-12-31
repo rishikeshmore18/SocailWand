@@ -127,10 +127,10 @@ struct SuggestionsView: View {
             selectedToneIDs = Set(viewModel.currentTones)
             selectedLengthID = viewModel.currentLength
         }
-        .onChange(of: viewModel.currentTones) { newValue in
+        .onChange(of: viewModel.currentTones) { oldValue, newValue in
             selectedToneIDs = Set(newValue)
         }
-        .onChange(of: viewModel.currentLength) { newValue in
+        .onChange(of: viewModel.currentLength) { oldValue, newValue in
             selectedLengthID = newValue
         }
     }
