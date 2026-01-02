@@ -108,6 +108,74 @@ final class KeyboardViewController: KeyboardInputViewController {
         setupCustomFeedbackService()
     }
     
+    override func viewWillSetupKeyboardView() {
+        super.viewWillSetupKeyboardView()
+        
+        // Enable swipe-down actions for iPhone (required for secondaryAction to work)
+        state.keyboardContext.settings.isSwipeDownActionsEnabled = true
+        print("✅ Enabled swipe-down actions for numeric alternatives")
+        
+        setupKeyboardView { [weak self] controller in
+            let context = controller.state.keyboardContext
+            let layout = self?.makeIPhoneNumericLayout(for: context)
+            return KeyboardView(layout: layout, services: controller.services)
+        }
+    }
+    
+    private func makeIPhoneNumericLayout(for context: KeyboardContext) -> KeyboardLayout? {
+        print("📱 makeIPhoneNumericLayout called - deviceType: \(context.deviceType)")
+        
+        // Verify device type check
+        guard context.deviceType == .phone else {
+            print("⚠️ Skipping numeric layout - not iPhone (deviceType: \(context.deviceType))")
+            return nil
+        }
+        
+        print("✅ iPhone detected, creating numeric layout...")
+        
+        // Try to get base layout with error handling
+        let base: KeyboardLayout
+        do {
+            base = try context.locale.keyboardLayout(for: context)
+            print("✅ Base layout created successfully")
+        } catch {
+            print("❌ Failed to create base layout: \(error)")
+            return nil
+        }
+        
+        let map: [String: String] = [
+            "q": "1", "w": "2", "e": "3", "r": "4", "t": "5",
+            "y": "6", "u": "7", "i": "8", "o": "9", "p": "0"
+        ]
+        
+        var rows = base.itemRows
+        var modifiedCount = 0
+        
+        for rowIndex in rows.indices {
+            for itemIndex in rows[rowIndex].indices {
+                let item = rows[rowIndex][itemIndex]
+                if case .character(let char) = item.action,
+                   let number = map[char.lowercased()] {
+                    var updated = item
+                    updated.secondaryAction = .character(number)
+                    rows[rowIndex][itemIndex] = updated
+                    modifiedCount += 1
+                    print("  ✓ Added numeric alternative: \(char.uppercased()) → \(number)")
+                }
+            }
+        }
+        
+        print("✅ Numeric layout created: \(modifiedCount) keys modified")
+        
+        return KeyboardLayout(
+            itemRows: rows,
+            deviceConfiguration: base.deviceConfiguration,
+            idealItemHeight: base.idealItemHeight,
+            idealItemInsets: base.idealItemInsets,
+            inputToolbarInputSet: base.inputToolbarInputSet
+        )
+    }
+    
     private func applyFeedbackSettingsFromAppGroup() {
         guard let defaults = UserDefaults(suiteName: SharedConstants.appGroupID) else {
             print("⚠️ Cannot access App Group for feedback settings")
