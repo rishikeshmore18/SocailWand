@@ -190,17 +190,13 @@ struct ClipboardHistoryView: View {
     
     private func handlePaste(_ clip: ClipboardItem) {
         onPaste(clip)
-        
-        let generator = UIImpactFeedbackGenerator(style: .medium)
-        generator.impactOccurred()
+        HapticHelper.triggerHaptic(style: .medium)
     }
     
     private func toggleBookmark(_ clip: ClipboardItem) {
         _ = ClipboardManager.shared.toggleBookmark(clipID: clip.id)
         loadClips()
-        
-        let generator = UIImpactFeedbackGenerator(style: .light)
-        generator.impactOccurred()
+        HapticHelper.triggerHaptic(style: .light)
     }
     
     // MARK: - Colors

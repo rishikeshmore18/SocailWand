@@ -783,8 +783,7 @@ struct SuggestionsView: View {
     }
     
     private func triggerHaptic(style: UIImpactFeedbackGenerator.FeedbackStyle) {
-        let generator = UIImpactFeedbackGenerator(style: style)
-        generator.impactOccurred()
+        HapticHelper.triggerHaptic(style: style)
     }
 }
 

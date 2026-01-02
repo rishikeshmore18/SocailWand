@@ -25,9 +25,14 @@
 		C3FED57F2EEC1F3E0006E37F /* ClipboardHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3FED57E2EEC1F3E0006E37F /* ClipboardHistoryView.swift */; };
 		C3WAND0012ECC6789009BB228 /* WandToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3WAND0022ECC6789009BB228 /* WandToolbar.swift */; };
 		C3WAND0032ECC6789009BB228 /* WandIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3WAND0042ECC6789009BB228 /* WandIcon.swift */; };
+		D3WMWV56SMSQ0U373JMDMNNW /* SocialWandKeyboard/Helpers/SoundHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = FGLDOTU788L8NUEMYAJ7BNA7 /* SocialWandKeyboard/Helpers/SoundHelper.swift */; };
+		HAPTICHELPERMAINTARGET001 /* SocialWandKeyboard/Helpers/HapticHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = R3ARDH4O1VLWM7X4APZIO9TR /* SocialWandKeyboard/Helpers/HapticHelper.swift */; };
+		SOUNDHELPERMAINTARGET001 /* SocialWandKeyboard/Helpers/SoundHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = FGLDOTU788L8NUEMYAJ7BNA7 /* SocialWandKeyboard/Helpers/SoundHelper.swift */; };
+
 		E9RRORBANNERVIEWSWIFT001 /* Views/ErrorBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9RRORBANNERVIEWSWIFT002 /* Views/ErrorBannerView.swift */; };
 		L9NEPICKERVIEWSWIFT001 /* Views/LengthPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = L9NEPICKERVIEWSWIFT002 /* Views/LengthPickerView.swift */; };
 		M9NUPICKERVIEWSWIFT001 /* Views/MenuPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = M9NUPICKERVIEWSWIFT002 /* Views/MenuPickerView.swift */; };
+		P3R6DATAV1PXNOFVNZQ5IEY9 /* SocialWandKeyboard/Helpers/HapticHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = R3ARDH4O1VLWM7X4APZIO9TR /* SocialWandKeyboard/Helpers/HapticHelper.swift */; };
 		S9UGGESTIONBANNERVIEWSWIFT001 /* Views/SuggestionBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = S9UGGESTIONBANNERVIEWSWIFT002 /* Views/SuggestionBannerView.swift */; };
 		SHAREDSUGGESTIONDATASWIFT001 /* Models/SharedSuggestionData.swift in Sources */ = {isa = PBXBuildFile; fileRef = SHAREDSUGGESTIONDATASWIFT002 /* Models/SharedSuggestionData.swift */; };
 		SI3ECNMBNVTNACIDWMIPR5FD /* Models/KeyboardModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = X9N88Q95F5GOJ41NYAOZKPBV /* Models/KeyboardModels.swift */; };
@@ -73,9 +78,11 @@
 		C3WAND0022ECC6789009BB228 /* WandToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WandToolbar.swift; sourceTree = "<group>"; };
 		C3WAND0042ECC6789009BB228 /* WandIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WandIcon.swift; sourceTree = "<group>"; };
 		E9RRORBANNERVIEWSWIFT002 /* Views/ErrorBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/ErrorBannerView.swift; sourceTree = "<group>"; };
+		FGLDOTU788L8NUEMYAJ7BNA7 /* SocialWandKeyboard/Helpers/SoundHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialWandKeyboard/Helpers/SoundHelper.swift; sourceTree = SOURCE_ROOT; };
 		JBBCK1LSYFQYBZU27XCRVZ1E /* Services/KeyboardAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/KeyboardAIService.swift; sourceTree = "<group>"; };
 		L9NEPICKERVIEWSWIFT002 /* Views/LengthPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/LengthPickerView.swift; sourceTree = "<group>"; };
 		M9NUPICKERVIEWSWIFT002 /* Views/MenuPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/MenuPickerView.swift; sourceTree = "<group>"; };
+		R3ARDH4O1VLWM7X4APZIO9TR /* SocialWandKeyboard/Helpers/HapticHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialWandKeyboard/Helpers/HapticHelper.swift; sourceTree = SOURCE_ROOT; };
 		S9UGGESTIONBANNERVIEWSWIFT002 /* Views/SuggestionBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/SuggestionBannerView.swift; sourceTree = "<group>"; };
 		SHAREDSUGGESTIONDATASWIFT002 /* Models/SharedSuggestionData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/SharedSuggestionData.swift; sourceTree = "<group>"; };
 		T9NEPICKERVIEWSWIFT002 /* Views/TonePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/TonePickerView.swift; sourceTree = "<group>"; };
@@ -145,6 +152,7 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
+		
 		C39A55FF2EBD923E00389BE5 = {
 			isa = PBXGroup;
 			children = (
@@ -152,8 +160,7 @@
 				C39A58122F1C0C7B00389BE5 /* Settings.bundle */,
 				C39A58022F1C000100389BE5 /* SocialWandKeyboard */,
 				C300DD492ECC5521009BB228 /* Frameworks */,
-				C39A56092EBD923E00389BE5 /* Products */,
-			);
+				C39A56092EBD923E00389BE5 /* Products */,			);
 			sourceTree = "<group>";
 		};
 		C39A56092EBD923E00389BE5 /* Products */ = {
@@ -184,6 +191,8 @@
 				M9NUPICKERVIEWSWIFT002 /* Views/MenuPickerView.swift */,
 				S9UGGESTIONBANNERVIEWSWIFT002 /* Views/SuggestionBannerView.swift */,
 				E9RRORBANNERVIEWSWIFT002 /* Views/ErrorBannerView.swift */,
+				R3ARDH4O1VLWM7X4APZIO9TR /* SocialWandKeyboard/Helpers/HapticHelper.swift */,
+				FGLDOTU788L8NUEMYAJ7BNA7 /* SocialWandKeyboard/Helpers/SoundHelper.swift */,
 				C39A58042F1C000100389BE5 /* Info.plist */,
 			);
 			path = SocialWandKeyboard;
@@ -312,6 +321,8 @@
 			files = (
 				C31B11DB2EE9794E009DF674 /* Views/LengthPickerView.swift in Sources */,
 				C31B11DA2EE97939009DF674 /* Views/TonePickerView.swift in Sources */,
+				HAPTICHELPERMAINTARGET001 /* SocialWandKeyboard/Helpers/HapticHelper.swift in Sources */,
+				SOUNDHELPERMAINTARGET001 /* SocialWandKeyboard/Helpers/SoundHelper.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -324,6 +335,8 @@
 				C3WAND0012ECC6789009BB228 /* WandToolbar.swift in Sources */,
 				C3WAND0032ECC6789009BB228 /* WandIcon.swift in Sources */,
 				YFWW9VIZDBOVPERHOVA2S34K /* Services/KeyboardAIService.swift in Sources */,
+				P3R6DATAV1PXNOFVNZQ5IEY9 /* SocialWandKeyboard/Helpers/HapticHelper.swift in Sources */,
+				D3WMWV56SMSQ0U373JMDMNNW /* SocialWandKeyboard/Helpers/SoundHelper.swift in Sources */,
 				SI3ECNMBNVTNACIDWMIPR5FD /* Models/KeyboardModels.swift in Sources */,
 				723K0K0JPQ3POOE5MSGUQOGU /* Models/SuggestionsViewModel.swift in Sources */,
 				C3FED57D2EEC1F270006E37F /* ClipboardManager.swift in Sources */,

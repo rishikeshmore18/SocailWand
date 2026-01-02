@@ -22,6 +22,11 @@ struct MenuPickerView: View {
     let onClipboard: () -> Void
     let onSettings: () -> Void
     let onCancel: () -> Void
+    let onUpload: (() -> Void)?
+    let onReply: (() -> Void)?
+    let onRewrite: (() -> Void)?
+    let onTone: (() -> Void)?
+    let onLength: (() -> Void)?
     
     @State private var showComingSoon: Bool = false
     
@@ -149,16 +154,35 @@ struct MenuPickerView: View {
         case "save":  // Changed from "paste"
             triggerHaptic(style: .medium)
             onPaste()
+            onCancel()  // Close menu after action
         case "clipboard":
             triggerHaptic(style: .light)
             onClipboard()
+            onCancel()  // Close menu after action
         case "settings":
             triggerHaptic(style: .medium)
             onSettings()
-        // ✅ NEW: If toolbar buttons appear in menu, close menu (they have their own actions)
-        case "upload", "reply", "rewrite", "tone", "length":
+            onCancel()  // Close menu after action
+        case "upload":
             triggerHaptic(style: .light)
-            onCancel()  // Just close menu - these buttons shouldn't be in menu normally
+            onCancel()  // Close menu first
+            onUpload?()  // Then trigger upload action
+        case "reply":
+            triggerHaptic(style: .light)
+            onCancel()  // Close menu first
+            onReply?()  // Then trigger reply action
+        case "rewrite":
+            triggerHaptic(style: .light)
+            onCancel()  // Close menu first
+            onRewrite?()  // Then trigger rewrite action
+        case "tone":
+            triggerHaptic(style: .light)
+            onCancel()  // Close menu first
+            onTone?()  // Then trigger tone action
+        case "length":
+            triggerHaptic(style: .light)
+            onCancel()  // Close menu first
+            onLength?()  // Then trigger length action
         default:
             break
         }
@@ -197,8 +221,7 @@ struct MenuPickerView: View {
     }
     
     private func triggerHaptic(style: UIImpactFeedbackGenerator.FeedbackStyle) {
-        let generator = UIImpactFeedbackGenerator(style: style)
-        generator.impactOccurred()
+        HapticHelper.triggerHaptic(style: style)
     }
 }
 

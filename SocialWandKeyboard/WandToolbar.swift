@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum ToolbarButtonType {
-    case upload, reply, rewrite, tone, length, menu
+    case upload, reply, rewrite, tone, length, menu, save, clipboard, settings
 }
 
 struct WandToolbar: View {
@@ -135,7 +135,7 @@ struct WandToolbar: View {
             ("tone", "waveform", "Tone", .tone, onToneButtonTap),
             ("length", "text.alignleft", "Length", .length, onLengthButtonTap),
             // ✅ NEW: Menu buttons (can now appear in toolbar if in positions 1-4)
-            ("save", "square.and.arrow.down", "Save", .menu, {
+            ("save", "square.and.arrow.down", "Save", .save, {
                 // If callback provided, use it; otherwise open menu
                 if let saveAction = onSaveButtonTap {
                     saveAction()
@@ -143,14 +143,14 @@ struct WandToolbar: View {
                     onMenuButtonTap()
                 }
             }),
-            ("clipboard", "list.clipboard", "Clipboard", .menu, {
+            ("clipboard", "list.clipboard", "Clipboard", .clipboard, {
                 if let clipboardAction = onClipboardButtonTap {
                     clipboardAction()
                 } else {
                     onMenuButtonTap()
                 }
             }),
-            ("settings", "gearshape", "Settings", .menu, {
+            ("settings", "gearshape", "Settings", .settings, {
                 if let settingsAction = onSettingsButtonTap {
                     settingsAction()
                 } else {
@@ -251,16 +251,12 @@ struct WandToolbar: View {
         }
     }
     
-    // Regular haptic feedback
     private func triggerHaptic() {
-        let generator = UIImpactFeedbackGenerator(style: .light)
-        generator.impactOccurred()
+        HapticHelper.triggerHaptic(style: .light)
     }
     
-    // Scroll haptic feedback (rigid for detent feel)
     private func triggerScrollHaptic() {
-        let generator = UIImpactFeedbackGenerator(style: .rigid)
-        generator.impactOccurred()
+        HapticHelper.triggerScrollHaptic()
     }
     
     // State management functions

@@ -13,16 +13,21 @@ class SuggestionBannerView: UIView {
     var onTap: (() -> Void)?
     var onClose: (() -> Void)?
     
+    init(message: String = "✨ Tap To Paste! Your AI Suggestion") {
+        super.init(frame: .zero)
+        setupUI(message: message)
+    }
+    
     override init(frame: CGRect) {
         super.init(frame: frame)
-        setupUI()
+        setupUI(message: "✨ Tap To Paste! Your AI Suggestion")
     }
     
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
     
-    private func setupUI() {
+    private func setupUI(message: String) {
         backgroundColor = UIColor(red: 139/255, green: 92/255, blue: 246/255, alpha: 1.0)
         layer.cornerRadius = 8
         
@@ -34,7 +39,7 @@ class SuggestionBannerView: UIView {
         addSubview(closeButton)
         
         // Label
-        label.text = "✨ Tap To Paste! Your AI Suggestion"
+        label.text = message
         label.font = UIFont.systemFont(ofSize: 13, weight: .medium)
         label.textColor = .white
         label.textAlignment = .center

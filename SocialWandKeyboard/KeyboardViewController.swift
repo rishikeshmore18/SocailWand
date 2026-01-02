@@ -59,7 +59,11 @@ final class KeyboardViewController: KeyboardInputViewController {
     
     // Banner properties
     private var suggestionBanner: SuggestionBannerView?
+    private var statusBanner: SuggestionBannerView?
     private var hasPendingSuggestion = false
+    
+    // Custom feedback service (stored to prevent deallocation)
+    private var customFeedbackService: CustomFeedbackService?
     
     // Track last visible picker for state restoration
     private enum LastVisiblePicker {
@@ -93,13 +97,62 @@ final class KeyboardViewController: KeyboardInputViewController {
         
         updateFullAccessFlag()
         
-        // Start polling for length preference changes (same as TonePicker)
+        // Start polling for length preference changes
         startLengthSyncTimer()
+    }
+    
+    // MARK: - KeyboardKit Feedback Configuration
+    
+    func viewWillSetupKeyboard() {
+        print("🔧 viewWillSetupKeyboard called - setting up custom feedback")
+        setupCustomFeedbackService()
+    }
+    
+    private func applyFeedbackSettingsFromAppGroup() {
+        guard let defaults = UserDefaults(suiteName: SharedConstants.appGroupID) else {
+            print("⚠️ Cannot access App Group for feedback settings")
+            return
+        }
+        
+        // Read settings from App Group
+        let soundEnabled = defaults.bool(forKey: "SoundFeedbackEnabled")
+        let hapticLevel = defaults.string(forKey: "HapticFeedbackLevel") ?? "soft"
+        let hapticsEnabled = hapticLevel != "off"
+        
+        // Sync KeyboardKit settings with App Group
+        state.feedbackContext.settings.isAudioFeedbackEnabled = soundEnabled
+        state.feedbackContext.settings.isHapticFeedbackEnabled = hapticsEnabled
+        
+        print("✅ Synced feedback settings: sound=\(soundEnabled), haptics=\(hapticsEnabled ? "on" : "off")")
+    }
+    
+    private func setupCustomFeedbackService() {
+        // Sync KeyboardKit settings with App Group first
+        applyFeedbackSettingsFromAppGroup()
+        
+        // Create and store custom feedback service instance
+        if customFeedbackService == nil {
+            customFeedbackService = CustomFeedbackService()
+        }
+        
+        // Assign to KeyboardKit (unwrap since we just created it if nil)
+        guard let service = customFeedbackService else {
+            print("❌ Failed to create custom feedback service")
+            return
+        }
+        services.feedbackService = service
+        print("✅ Custom feedback service installed")
     }
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         print("👁️ viewDidAppear")
+        
+        // Safety check: Ensure custom feedback service is installed
+        if !(services.feedbackService is CustomFeedbackService) {
+            print("⚠️ Custom feedback service missing, reinstalling...")
+            setupCustomFeedbackService()
+        }
         
         // Check if toolbar exists AND is actually visible in view hierarchy
         let toolbarNeedsRecreation = toolbarHosting == nil ||
@@ -1590,6 +1643,21 @@ final class KeyboardViewController: KeyboardInputViewController {
             },
             onCancel: { [weak self] in
                 self?.hideMenuPicker()
+            },
+            onUpload: { [weak self] in
+                self?.handleUploadButtonTap()
+            },
+            onReply: { [weak self] in
+                self?.handleReplyButtonTap()
+            },
+            onRewrite: { [weak self] in
+                self?.handleRewriteButtonTap()
+            },
+            onTone: { [weak self] in
+                self?.handleToneButtonTap()
+            },
+            onLength: { [weak self] in
+                self?.handleLengthButtonTap()
             }
         )
         
@@ -1638,6 +1706,29 @@ final class KeyboardViewController: KeyboardInputViewController {
     }
     
     private func handlePasteAction() {
+        // Immediately set Save button to active
+        updateToolbarButtonState(.save, isActive: true)
+        
+        // Clear active state after ~0.4s (always clear, success or fail)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            self?.updateToolbarButtonState(.save, isActive: false)
+        }
+        
+        // Check if clipboard is empty before saving
+        let pasteboard = UIPasteboard.general
+        let hasImage = pasteboard.image != nil
+        let hasText = pasteboard.string?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        
+        if !hasImage && !hasText {
+            // Clipboard is empty
+            showStatusBanner(message: "Clipboard is empty. Copy something first.")
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.warning)
+            print("⚠️ Clipboard is empty")
+            return
+        }
+        
+        // Clipboard has content, try to save
         let saved = ClipboardManager.shared.saveCurrentClipboard()
         
         if saved {
@@ -1646,8 +1737,10 @@ final class KeyboardViewController: KeyboardInputViewController {
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.success)
             
+            showStatusBanner(message: "Saved to Wand clipboard")
             print("✅ Saved to Wand clipboard")
         } else {
+            // Duplicate or other failure
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.warning)
             
@@ -1656,8 +1749,18 @@ final class KeyboardViewController: KeyboardInputViewController {
     }
     
     private func handleClipboardAction() {
+        // Toggle behavior: if already open, close it
+        if clipboardHistoryHosting != nil {
+            hideClipboardHistory()
+            updateToolbarButtonState(.clipboard, isActive: false)
+            return
+        }
+        
+        // Otherwise, open clipboard history
         hideMenuPicker()
+        closeAnyActiveView()
         showClipboardHistory()
+        updateToolbarButtonState(.clipboard, isActive: true)
     }
     
     // MARK: - Clipboard History Management
@@ -1712,6 +1815,8 @@ final class KeyboardViewController: KeyboardInputViewController {
         
         if !isRestoringPicker {
             lastVisiblePicker = .none
+            // Clear clipboard active state when not restoring
+            updateToolbarButtonState(.clipboard, isActive: false)
         }
         
         hosting.willMove(toParent: nil)
@@ -2008,6 +2113,54 @@ final class KeyboardViewController: KeyboardInputViewController {
         generator.notificationOccurred(.success)
     }
     
+    // MARK: - Status Banner
+    
+    private func showStatusBanner(message: String, duration: TimeInterval = 2.0) {
+        // Remove any existing status banner
+        statusBanner?.removeFromSuperview()
+        statusBanner = nil
+        
+        // Create new status banner with custom message
+        let banner = SuggestionBannerView(message: message)
+        banner.translatesAutoresizingMaskIntoConstraints = false
+        banner.onClose = { [weak self] in
+            self?.statusBanner?.removeFromSuperview()
+            self?.statusBanner = nil
+        }
+        
+        view.addSubview(banner)
+        
+        // Use same constraints as suggestion banner
+        let toolbarHeight: CGFloat = 44.0
+        let xButtonWidth: CGFloat = 44.0
+        let horizontalPadding: CGFloat = 8.0
+        let gapAfterXButton: CGFloat = 12.0
+        let bannerTrailingPadding: CGFloat = 12.0
+        
+        let bannerLeadingOffset = horizontalPadding + xButtonWidth + gapAfterXButton
+        
+        let bannerHeight: CGFloat = 32.0
+        let bannerTopOffset = (toolbarHeight - bannerHeight) / 2.0
+        
+        NSLayoutConstraint.activate([
+            banner.topAnchor.constraint(equalTo: view.topAnchor, constant: bannerTopOffset),
+            banner.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: bannerLeadingOffset),
+            banner.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -bannerTrailingPadding),
+            banner.heightAnchor.constraint(equalToConstant: bannerHeight)
+        ])
+        
+        statusBanner = banner
+        
+        view.bringSubviewToFront(banner)
+        
+        // Auto-dismiss after duration
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
+            guard let self = self, self.statusBanner === banner else { return }
+            self.statusBanner?.removeFromSuperview()
+            self.statusBanner = nil
+        }
+    }
+    
     private func handleBannerTap() {
         guard let data = SharedSuggestionData.retrieve() else { return }
         
@@ -2033,52 +2186,14 @@ final class KeyboardViewController: KeyboardInputViewController {
     
     // MARK: - Haptic Feedback Helper
     
-    /// Triggers haptic feedback based on user's haptic setting
+    // MARK: - Haptic Feedback Helper
+    
     private func triggerHaptic(style: UIImpactFeedbackGenerator.FeedbackStyle = .medium) {
-        guard let defaults = UserDefaults(suiteName: SharedConstants.appGroupID) else {
-            // Fallback to default if can't access settings
-            UIImpactFeedbackGenerator(style: style).impactOccurred()
-            return
-        }
-        
-        let hapticLevel = defaults.string(forKey: "HapticFeedbackLevel") ?? "soft"
-        
-        switch hapticLevel {
-        case "soft":
-            // Use light style for soft, but keep original style for medium/heavy
-            let adjustedStyle: UIImpactFeedbackGenerator.FeedbackStyle = (style == .heavy) ? .medium : .light
-            UIImpactFeedbackGenerator(style: adjustedStyle).impactOccurred()
-        case "strong":
-            // Use heavy style for strong
-            UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-        case "off":
-            // No haptic
-            break
-        default:
-            UIImpactFeedbackGenerator(style: style).impactOccurred()
-        }
+        HapticHelper.triggerHaptic(style: style)
     }
     
-    /// Triggers scroll haptic feedback (rigid for detent feel)
     private func triggerScrollHaptic() {
-        guard let defaults = UserDefaults(suiteName: SharedConstants.appGroupID) else {
-            UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-            return
-        }
-        
-        let hapticLevel = defaults.string(forKey: "HapticFeedbackLevel") ?? "soft"
-        
-        switch hapticLevel {
-        case "soft":
-            UIImpactFeedbackGenerator(style: .rigid).impactOccurred()  // Keep rigid for scroll
-        case "strong":
-            UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-        case "off":
-            // No haptic
-            break
-        default:
-            UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-        }
+        HapticHelper.triggerScrollHaptic()
     }
     
     // MARK: - Text Insertion
@@ -2140,5 +2255,62 @@ final class KeyboardViewController: KeyboardInputViewController {
     override func textDidChange(_ textInput: UITextInput?) {
         super.textDidChange(textInput)
         updateFullAccessFlag()
+    }
+}
+
+// MARK: - Custom Feedback Service
+
+private final class CustomFeedbackService: FeedbackService {
+    func triggerAudioFeedback(_ feedback: Feedback.Audio) {
+        print("🔊 AUDIO TRIGGERED: \(feedback)")
+        switch feedback {
+        case .delete:
+            SoundHelper.playDeleteSound()
+        case .input:
+            SoundHelper.playKeyTapSound()
+        case .system:
+            SoundHelper.playKeyTapSound()
+        case .customId(let soundID):
+            SoundHelper.playSystemSound(soundID)
+        case .customUrl(let url):
+            // Custom sound file - use default for now
+            SoundHelper.playKeyTapSound()
+        case .none:
+            // No audio feedback
+            break
+        }
+    }
+    
+    func triggerHapticFeedback(_ feedback: Feedback.Haptic) {
+        print("📳 HAPTIC TRIGGERED: \(feedback)")
+        
+        // Check if haptics are enabled before triggering notification/selection haptics
+        switch feedback {
+        case .lightImpact:
+            HapticHelper.triggerHaptic(style: .light)
+        case .mediumImpact:
+            HapticHelper.triggerHaptic(style: .medium)
+        case .heavyImpact:
+            HapticHelper.triggerHaptic(style: .heavy)
+        case .success:
+            guard HapticHelper.isHapticsEnabled() else { return }
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.success)
+        case .warning:
+            guard HapticHelper.isHapticsEnabled() else { return }
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.warning)
+        case .error:
+            guard HapticHelper.isHapticsEnabled() else { return }
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.error)
+        case .selectionChanged:
+            guard HapticHelper.isHapticsEnabled() else { return }
+            let generator = UISelectionFeedbackGenerator()
+            generator.selectionChanged()
+        case .none:
+            // No haptic feedback
+            break
+        }
     }
 }
