@@ -6,11 +6,57 @@
 import UIKit
 import SwiftUI
 import KeyboardKit
-import ObjectiveC
 
 private enum SharedConstants {
     static let appGroupID = "group.rishi-more.social-wand"
     static let fullAccessKey = "KeyboardFullAccess"
+}
+
+private struct FlickLetterKeyView: View {
+    let item: KeyboardLayout.Item
+    let baseView: KeyboardViewItem<Keyboard.ButtonContent>
+    @ObservedObject var keyboardContext: KeyboardContext
+    let actionHandler: any KeyboardActionHandler
+    let repeatTimer: GestureButtonTimer?
+    let flickState: FlickGestureStateStore
+    @State private var isPressed = false
+
+    var body: some View {
+        let rowHeight = KeyboardLayout.DeviceConfiguration.standard(for: keyboardContext).rowHeight
+        let releaseTolerance = max(24, rowHeight * 0.6)
+        let style = item.action.standardButtonStyle(for: keyboardContext, isPressed: isPressed)
+
+        ZStack {
+            baseView
+                .allowsHitTesting(false)
+                .opacity(0)
+
+            ZStack {
+                Keyboard.ButtonContent(action: item.action)
+                FlickKeyContent(
+                    item: item,
+                    keyboardContext: keyboardContext,
+                    flickState: flickState
+                )
+            }
+            .keyboardButton(
+                for: item.action,
+                style: style,
+                actionHandler: actionHandler,
+                repeatTimer: repeatTimer,
+                keyboardContext: keyboardContext,
+                calloutContext: nil,
+                additionalTapArea: nil,
+                edgeInsets: item.edgeInsets,
+                isPressed: $isPressed,
+                isGestureAutoCancellable: false,
+                scrollState: nil,
+                releaseOutsideTolerance: releaseTolerance,
+                secondaryActionState: nil
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
 }
 
 final class KeyboardViewController: KeyboardInputViewController {
@@ -44,15 +90,29 @@ final class KeyboardViewController: KeyboardInputViewController {
         "professional": "Professional",
         "casual": "Casual"
     ]
+
+    private static let alternateCharacterMap: [String: String] = [
+        // Row 1: Numbers
+        "q": "1", "w": "2", "e": "3", "r": "4", "t": "5",
+        "y": "6", "u": "7", "i": "8", "o": "9", "p": "0",
+        // Row 2: Symbols
+        "a": "@", "s": "!", "d": ":", "f": ";", "g": "(",
+        "h": ")", "j": "&", "k": "\"", "l": "-",
+        // Row 3: More symbols
+        "z": ".", "x": ",", "c": "?", "v": "/", "b": "'",
+        "n": "%", "m": "#"
+    ]
     
     // Create the SuggestionsViewModel once
     private let suggestionsViewModel = SuggestionsViewModel()
     
     // Suggestions view hosting (created once)
     private var suggestionsHosting: UIHostingController<SuggestionsView>?
-    
+
     // Store reference to keyboard view
     private weak var keyboardView: UIView?
+
+    private let flickGestureState = FlickGestureStateStore()
     
     // State for suggestions
     private var suggestionBatchCount = 0
@@ -114,12 +174,52 @@ final class KeyboardViewController: KeyboardInputViewController {
         // Enable swipe-down actions for iPhone (required for secondaryAction to work)
         state.keyboardContext.settings.isSwipeDownActionsEnabled = true
         print("✅ Enabled swipe-down actions for numeric alternatives")
+
+        installFlickActionHandlerIfNeeded(for: state.keyboardContext)
         
         setupKeyboardView { [weak self] controller in
             let context = controller.state.keyboardContext
             let layout = self?.makeIPhoneNumericLayout(for: context)
-            return KeyboardView(layout: layout, services: controller.services)
+            let flickState = self?.flickGestureState ?? FlickGestureStateStore()
+            return KeyboardView(
+                layout: layout,
+                services: controller.services,
+                buttonContent: { $0.view },
+                buttonView: { params in
+                    if case .character = params.item.action {
+                        AnyView(
+                            FlickLetterKeyView(
+                                item: params.item,
+                                baseView: params.view,
+                                keyboardContext: context,
+                                actionHandler: controller.services.actionHandler,
+                                repeatTimer: controller.services.repeatGestureTimer,
+                                flickState: flickState
+                            )
+                        )
+                    } else {
+                        AnyView(params.view)
+                    }
+                },
+                collapsedView: { $0.view },
+                emojiKeyboard: { $0.view },
+                toolbar: { $0.view }
+            )
         }
+    }
+
+    private func installFlickActionHandlerIfNeeded(for context: KeyboardContext) {
+        if services.actionHandler is FlickActionHandler {
+            return
+        }
+
+        services.actionHandler = FlickActionHandler(
+            base: services.actionHandler,
+            keyboardContext: context,
+            alternateMap: Self.alternateCharacterMap,
+            flickState: flickGestureState,
+            calloutContext: state.calloutContext
+        )
     }
     
     private func makeIPhoneNumericLayout(for context: KeyboardContext) -> KeyboardLayout? {
@@ -133,20 +233,11 @@ final class KeyboardViewController: KeyboardInputViewController {
         
         print("✅ iPhone detected, creating numeric layout...")
         
-        // Try to get base layout with error handling
-        let base: KeyboardLayout
-        do {
-            base = try context.locale.keyboardLayout(for: context)
-            print("✅ Base layout created successfully")
-        } catch {
-            print("❌ Failed to create base layout: \(error)")
-            return nil
-        }
+        // Use the free standard layout builder to avoid license requirements
+        let base = KeyboardLayout.standard(for: context)
+        print("✅ Base layout created successfully")
         
-        let map: [String: String] = [
-            "q": "1", "w": "2", "e": "3", "r": "4", "t": "5",
-            "y": "6", "u": "7", "i": "8", "o": "9", "p": "0"
-        ]
+        let map = Self.alternateCharacterMap
         
         var rows = base.itemRows
         var modifiedCount = 0
@@ -1907,8 +1998,11 @@ final class KeyboardViewController: KeyboardInputViewController {
             if let imageFilename = clip.imageFilename,
                let imageURL = ClipboardManager.shared.getImageURL(filename: imageFilename) {
                 
-                if let imageData = try? Data(contentsOf: imageURL) {
-                    UIPasteboard.general.setData(imageData, forPasteboardType: "public.png")
+                // Load the image as UIImage instead of raw data
+                if let imageData = try? Data(contentsOf: imageURL),
+                   let image = UIImage(data: imageData) {
+                    // Use the image property instead of setData
+                    UIPasteboard.general.image = image
                     print("✅ Pasted image to clipboard: \(imageFilename)")
                 }
             }
@@ -2340,11 +2434,13 @@ private final class CustomFeedbackService: FeedbackService {
             SoundHelper.playKeyTapSound()
         case .customId(let soundID):
             SoundHelper.playSystemSound(soundID)
-        case .customUrl(let url):
+        case .customUrl(_):
             // Custom sound file - use default for now
             SoundHelper.playKeyTapSound()
         case .none:
             // No audio feedback
+            break
+        @unknown default:
             break
         }
     }
@@ -2378,6 +2474,8 @@ private final class CustomFeedbackService: FeedbackService {
             generator.selectionChanged()
         case .none:
             // No haptic feedback
+            break
+        @unknown default:
             break
         }
     }
