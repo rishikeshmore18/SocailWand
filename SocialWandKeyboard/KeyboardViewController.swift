@@ -32,7 +32,6 @@ private struct FlickLetterKeyView: View {
                 .opacity(0)
 
             ZStack {
-                Keyboard.ButtonContent(action: item.action)
                 FlickKeyContent(
                     item: item,
                     keyboardContext: keyboardContext,
@@ -254,14 +253,13 @@ final class KeyboardViewController: KeyboardInputViewController {
     
     private func makeIPhoneNumericLayout(for context: KeyboardContext) -> KeyboardLayout? {
         print("📱 makeIPhoneNumericLayout called - deviceType: \(context.deviceType)")
-        
-        // Verify device type check
-        guard context.deviceType == .phone else {
-            print("⚠️ Skipping numeric layout - not iPhone (deviceType: \(context.deviceType))")
-            return nil
+
+        let isPhone = context.deviceType == .phone
+        if isPhone {
+            print("✅ iPhone detected, creating numeric layout...")
+        } else {
+            print("✅ Non-iPhone detected, creating custom layout without number row...")
         }
-        
-        print("✅ iPhone detected, creating numeric layout...")
         
         // Use the free standard layout builder to avoid license requirements
         let base = KeyboardLayout.standard(for: context)
@@ -271,6 +269,22 @@ final class KeyboardViewController: KeyboardInputViewController {
         
         var rows = base.itemRows
         var modifiedCount = 0
+        let digits = Set(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"])
+
+        if !isPhone {
+            if let numberRowIndex = rows.firstIndex(where: { row in
+                let rowChars = row.compactMap { item -> String? in
+                    if case .character(let char) = item.action {
+                        return char
+                    }
+                    return nil
+                }
+                return rowChars.count >= 10 && rowChars.allSatisfy({ digits.contains($0) })
+            }) {
+                rows.remove(at: numberRowIndex)
+                print("✅ Removed number row for iPad layout")
+            }
+        }
         
         for rowIndex in rows.indices {
             for itemIndex in rows[rowIndex].indices {
@@ -311,6 +325,35 @@ final class KeyboardViewController: KeyboardInputViewController {
         // Sync KeyboardKit settings with App Group
         state.feedbackContext.settings.isAudioFeedbackEnabled = soundEnabled
         state.feedbackContext.settings.isHapticFeedbackEnabled = hapticsEnabled
+
+        switch hapticLevel {
+        case "soft":
+            state.feedbackContext.hapticConfiguration = Feedback.HapticConfiguration(
+                press: .lightImpact,
+                release: .lightImpact,
+                doubleTap: .none,
+                longPress: .lightImpact,
+                repeat: .lightImpact
+            )
+        case "strong":
+            state.feedbackContext.hapticConfiguration = Feedback.HapticConfiguration(
+                press: .heavyImpact,
+                release: .heavyImpact,
+                doubleTap: .none,
+                longPress: .heavyImpact,
+                repeat: .heavyImpact
+            )
+        case "off":
+            state.feedbackContext.hapticConfiguration = .disabled
+        default:
+            state.feedbackContext.hapticConfiguration = Feedback.HapticConfiguration(
+                press: .lightImpact,
+                release: .lightImpact,
+                doubleTap: .none,
+                longPress: .lightImpact,
+                repeat: .lightImpact
+            )
+        }
         
         print("✅ Synced feedback settings: sound=\(soundEnabled), haptics=\(hapticsEnabled ? "on" : "off")")
     }
