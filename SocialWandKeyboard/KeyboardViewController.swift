@@ -91,7 +91,7 @@ final class KeyboardViewController: KeyboardInputViewController {
         "casual": "Casual"
     ]
 
-    private static let alternateCharacterMap: [String: String] = [
+    private static let defaultAlternateCharacterMap: [String: String] = [
         // Row 1: Numbers
         "q": "1", "w": "2", "e": "3", "r": "4", "t": "5",
         "y": "6", "u": "7", "i": "8", "o": "9", "p": "0",
@@ -113,6 +113,8 @@ final class KeyboardViewController: KeyboardInputViewController {
     private weak var keyboardView: UIView?
 
     private let flickGestureState = FlickGestureStateStore()
+    private var currentAlternateCharacterMap: [String: String] = KeyboardViewController.defaultAlternateCharacterMap
+    private var lastInstalledAlternateCharacterMap: [String: String] = KeyboardViewController.defaultAlternateCharacterMap
     
     // State for suggestions
     private var suggestionBatchCount = 0
@@ -175,7 +177,11 @@ final class KeyboardViewController: KeyboardInputViewController {
         state.keyboardContext.settings.isSwipeDownActionsEnabled = true
         print("✅ Enabled swipe-down actions for numeric alternatives")
 
-        installFlickActionHandlerIfNeeded(for: state.keyboardContext)
+        let resolvedMap = resolvedAlternateCharacterMap()
+        if resolvedMap != currentAlternateCharacterMap {
+            currentAlternateCharacterMap = resolvedMap
+        }
+        installFlickActionHandlerIfNeeded(for: state.keyboardContext, alternateMap: currentAlternateCharacterMap)
         
         setupKeyboardView { [weak self] controller in
             let context = controller.state.keyboardContext
@@ -209,17 +215,41 @@ final class KeyboardViewController: KeyboardInputViewController {
     }
 
     private func installFlickActionHandlerIfNeeded(for context: KeyboardContext) {
-        if services.actionHandler is FlickActionHandler {
+        installFlickActionHandlerIfNeeded(for: context, alternateMap: currentAlternateCharacterMap)
+    }
+
+    private func installFlickActionHandlerIfNeeded(
+        for context: KeyboardContext,
+        alternateMap: [String: String]
+    ) {
+        if services.actionHandler is FlickActionHandler,
+           alternateMap == lastInstalledAlternateCharacterMap {
             return
         }
 
         services.actionHandler = FlickActionHandler(
             base: services.actionHandler,
             keyboardContext: context,
-            alternateMap: Self.alternateCharacterMap,
+            alternateMap: alternateMap,
             flickState: flickGestureState,
             calloutContext: state.calloutContext
         )
+        lastInstalledAlternateCharacterMap = alternateMap
+    }
+
+    private func resolvedAlternateCharacterMap() -> [String: String] {
+        let defaults = UserDefaults(suiteName: SharedConstants.appGroupID)
+        let custom = defaults?.dictionary(forKey: "CustomAlternateKeys") as? [String: String] ?? [:]
+        let allowed = Set(["a", "s", "d", "f", "g", "h", "j", "k", "l", "z", "x", "c", "v", "b", "n", "m"])
+        var merged = Self.defaultAlternateCharacterMap
+        for (key, value) in custom {
+            let lowerKey = key.lowercased()
+            guard allowed.contains(lowerKey) else { continue }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            merged[lowerKey] = String(trimmed.prefix(1))
+        }
+        return merged
     }
     
     private func makeIPhoneNumericLayout(for context: KeyboardContext) -> KeyboardLayout? {
@@ -237,7 +267,7 @@ final class KeyboardViewController: KeyboardInputViewController {
         let base = KeyboardLayout.standard(for: context)
         print("✅ Base layout created successfully")
         
-        let map = Self.alternateCharacterMap
+        let map = currentAlternateCharacterMap
         
         var rows = base.itemRows
         var modifiedCount = 0

@@ -81,6 +81,18 @@ struct SettingsView: View {
                                 showChevron: true
                             )
                         }
+
+                        Divider()
+                            .padding(.leading, horizontalPadding + 44)
+
+                        NavigationLink(destination: AlternateKeysSettingsView()) {
+                            settingRow(
+                                icon: "textformat",
+                                title: "Alternate Keys",
+                                subtitle: "Customize A–L, Z–M",
+                                showChevron: true
+                            )
+                        }
                     }
                     .padding(.top, 24)
                 }
