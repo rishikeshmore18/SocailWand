@@ -12,6 +12,10 @@ private enum SharedConstants {
     static let fullAccessKey = "KeyboardFullAccess"
 }
 
+final class ToolbarAutocompleteModel: ObservableObject {
+    @Published var suggestions: [String] = []
+}
+
 private struct FlickLetterKeyView: View {
     let item: KeyboardLayout.Item
     let baseView: KeyboardViewItem<Keyboard.ButtonContent>
@@ -104,6 +108,12 @@ final class KeyboardViewController: KeyboardInputViewController {
     
     // Create the SuggestionsViewModel once
     private let suggestionsViewModel = SuggestionsViewModel()
+
+    private let autocompleteModel = ToolbarAutocompleteModel()
+    private let textChecker = UITextChecker()
+    private var autocompleteTimer: Timer?
+    private var autocompleteCache: [String: [String]] = [:]
+    private var lastAutocompleteWord: String = ""
     
     // Suggestions view hosting (created once)
     private var suggestionsHosting: UIHostingController<SuggestionsView>?
@@ -151,6 +161,13 @@ final class KeyboardViewController: KeyboardInputViewController {
         
         // Set up callbacks once
         setupSuggestionsCallbacks()
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAutocompleteTrigger),
+            name: NSNotification.Name("KeyboardAutocompleteTrigger"),
+            object: nil
+        )
         
         // Load saved preferences
         savedTonePreferences = loadSavedTonePreferences()
@@ -184,6 +201,7 @@ final class KeyboardViewController: KeyboardInputViewController {
         
         setupKeyboardView { [weak self] controller in
             let context = controller.state.keyboardContext
+            let rowHeight = KeyboardLayout.DeviceConfiguration.standard(for: context).rowHeight
             let layout = self?.makeIPhoneNumericLayout(for: context)
             let flickState = self?.flickGestureState ?? FlickGestureStateStore()
             return KeyboardView(
@@ -191,7 +209,19 @@ final class KeyboardViewController: KeyboardInputViewController {
                 services: controller.services,
                 buttonContent: { $0.view },
                 buttonView: { params in
-                    if case .character = params.item.action {
+                    if case .custom(let name) = params.item.action, name == "emoji" {
+                        let iconSize = rowHeight * 0.45
+                        AnyView(
+                            ZStack {
+                                params.view
+                                Image(systemName: "face.smiling")
+                                    .font(.system(size: iconSize, weight: .regular))
+                                    .foregroundColor(
+                                        params.item.action.standardButtonForegroundColor(for: context)
+                                    )
+                            }
+                        )
+                    } else if case .character = params.item.action {
                         AnyView(
                             FlickLetterKeyView(
                                 item: params.item,
@@ -207,7 +237,45 @@ final class KeyboardViewController: KeyboardInputViewController {
                     }
                 },
                 collapsedView: { $0.view },
-                emojiKeyboard: { $0.view },
+                emojiKeyboard: { params in
+                    if context.deviceType == .phone {
+                        GeometryReader { proxy in
+                            let baseSizes = EmojiKeyboard.Sizes.iPhone
+                            let menuHeight = baseSizes.menuHeight
+                            let topReserved: CGFloat = 20
+                            let verticalPadding: CGFloat = 6
+                            let availableHeight = max(0, proxy.size.height - menuHeight - topReserved - verticalPadding)
+                            let effectiveRows: CGFloat = 2.6
+                            let frameSize = max(34, floor(availableHeight / effectiveRows))
+                            let fontSize = frameSize * 0.82
+                            let customSizes = EmojiKeyboard.Sizes(
+                                emojiFontSize: fontSize,
+                                emojiFrameWidth: frameSize,
+                                emojiFrameHeight: frameSize,
+                                emojiSelectedScale: baseSizes.emojiSelectedScale,
+                                menuButtonWidth: baseSizes.menuButtonWidth,
+                                menuButtonHeight: baseSizes.menuButtonHeight,
+                                menuFontSize: baseSizes.menuFontSize,
+                                menuFontSizeBackspace: baseSizes.menuFontSizeBackspace,
+                                menuHeight: baseSizes.menuHeight,
+                                menuHighlightSize: baseSizes.menuHighlightSize,
+                                menuIconSize: baseSizes.menuIconSize,
+                                popoverEmojiFontSize: baseSizes.popoverEmojiFontSize,
+                                popoverEmojiFrameWidth: baseSizes.popoverEmojiFrameWidth,
+                                popoverEmojiFrameHeight: baseSizes.popoverEmojiFrameHeight,
+                                popoverEmojiSelectedCornerRadius: baseSizes.popoverEmojiSelectedCornerRadius,
+                                popoverEmojiSelectedScale: baseSizes.popoverEmojiSelectedScale,
+                                popoverSwipeDownCancelThreshold: baseSizes.popoverSwipeDownCancelThreshold,
+                                popoverVerticalOffset: baseSizes.popoverVerticalOffset
+                            )
+                            params.view
+                                .emojiKeyboardSizes(customSizes)
+                                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+                        }
+                    } else {
+                        params.view
+                    }
+                },
                 toolbar: { $0.view }
             )
         }
@@ -270,6 +338,13 @@ final class KeyboardViewController: KeyboardInputViewController {
         var rows = base.itemRows
         var modifiedCount = 0
         let digits = Set(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"])
+        let emojiAction = KeyboardAction.custom(named: "emoji")
+
+        rows.remove(.keyboardType(.emojis))
+        if !rows.hasKey(for: emojiAction) {
+            let emojiItem = base.createIdealItem(for: emojiAction, width: .input)
+            rows.insert(emojiItem, before: .space)
+        }
 
         if !isPhone {
             if let numberRowIndex = rows.firstIndex(where: { row in
@@ -420,6 +495,12 @@ final class KeyboardViewController: KeyboardInputViewController {
         }
         
         updateFullAccessFlag()
+
+        CloudClipboardSyncService.shared.checkSyncAvailability(requiresOpenAccess: true) { availability in
+            guard availability == .available else { return }
+            CloudClipboardSyncService.shared.pushLocalChanges(requiresOpenAccess: true)
+            CloudClipboardSyncService.shared.fetchRemoteChanges()
+        }
     }
     
     // NEW: Centralized refresh for picker text
@@ -820,6 +901,11 @@ final class KeyboardViewController: KeyboardInputViewController {
             onSettingsButtonTap: { [weak self] in
                 self?.handleSettingsAction()
             },
+            autocompleteModel: autocompleteModel,
+            onAutocompleteTap: { [weak self] suggestion in
+                self?.applyAutocompleteSuggestion(suggestion)
+            },
+            maxSuggestionsCount: maxAutocompleteSuggestions,
             isSuggestionsVisible: { [weak self] in
                 return (self?.suggestionsHosting != nil) ||
                        (self?.tonePickerHosting != nil) ||
@@ -1971,6 +2057,26 @@ final class KeyboardViewController: KeyboardInputViewController {
             
             showStatusBanner(message: "Saved to Wand clipboard")
             print("✅ Saved to Wand clipboard")
+
+            CloudClipboardSyncService.shared.checkSyncAvailability(requiresOpenAccess: true) { [weak self] availability in
+                let message: String?
+                switch availability {
+                case .available:
+                    message = nil
+                case .noOpenAccess:
+                    message = "Enable Open Access to sync clipboard"
+                case .noICloud:
+                    message = "Sign in to iCloud to enable sync"
+                case .restricted, .unknown:
+                    message = "iCloud sync unavailable right now"
+                }
+
+                if let message = message {
+                    DispatchQueue.main.async {
+                        self?.showStatusBanner(message: message)
+                    }
+                }
+            }
         } else {
             // Duplicate or other failure
             let generator = UINotificationFeedbackGenerator()
@@ -2481,6 +2587,109 @@ final class KeyboardViewController: KeyboardInputViewController {
         lengthSyncTimer = nil
         print("🛑 Stopped length sync timer")
     }
+
+    private func scheduleAutocompleteUpdate() {
+        autocompleteTimer?.invalidate()
+        autocompleteTimer = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: false) { [weak self] _ in
+            self?.updateAutocompleteSuggestions()
+        }
+    }
+
+    private func updateAutocompleteSuggestions() {
+        let context = textDocumentProxy.documentContextBeforeInput ?? ""
+        let word = extractLastWord(from: context)
+        let isWordComplete = isWordBoundary(context: context)
+        let cacheKey = (isWordComplete ? "g:" : "c:") + word.lowercased()
+
+        guard word.count >= 2 else {
+            autocompleteModel.suggestions = []
+            lastAutocompleteWord = word
+            return
+        }
+
+        if cacheKey == lastAutocompleteWord, !autocompleteModel.suggestions.isEmpty {
+            return
+        }
+
+        if let cached = autocompleteCache[cacheKey] {
+            autocompleteModel.suggestions = cached
+            lastAutocompleteWord = cacheKey
+            return
+        }
+
+        var language = state.keyboardContext.locale.identifier
+        if !UITextChecker.availableLanguages.contains(language) {
+            language = "en_US"
+        }
+        let range = NSRange(location: 0, length: word.utf16.count)
+        let suggestions: [String]
+        if isWordComplete {
+            let misspelledRange = textChecker.rangeOfMisspelledWord(
+                in: word,
+                range: range,
+                startingAt: 0,
+                wrap: false,
+                language: language
+            )
+            if misspelledRange.location != NSNotFound {
+                suggestions = textChecker.guesses(
+                    forWordRange: misspelledRange,
+                    in: word,
+                    language: language
+                ) ?? []
+            } else {
+                suggestions = []
+            }
+        } else {
+            suggestions = textChecker.completions(
+                forPartialWordRange: range,
+                in: word,
+                language: language
+            ) ?? []
+        }
+
+        let trimmed = Array(suggestions.prefix(maxAutocompleteSuggestions))
+        autocompleteCache[cacheKey] = trimmed
+        lastAutocompleteWord = cacheKey
+        autocompleteModel.suggestions = trimmed
+    }
+
+    private func extractLastWord(from text: String) -> String {
+        guard let chunk = text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).last else {
+            return ""
+        }
+        let trimmed = String(chunk).trimmingCharacters(in: CharacterSet(charactersIn: ".,;:!?()[]{}\""))
+        return trimmed
+    }
+
+    private func isWordBoundary(context: String) -> Bool {
+        guard let last = context.last else { return false }
+        if last.isWhitespace || last.isNewline {
+            return true
+        }
+        return last.unicodeScalars.allSatisfy { CharacterSet.punctuationCharacters.contains($0) }
+    }
+
+    private func applyAutocompleteSuggestion(_ suggestion: String) {
+        let context = textDocumentProxy.documentContextBeforeInput ?? ""
+        let lastWord = extractLastWord(from: context)
+        guard !lastWord.isEmpty else { return }
+
+        for _ in 0..<lastWord.count {
+            textDocumentProxy.deleteBackward()
+        }
+
+        textDocumentProxy.insertText(suggestion)
+        scheduleAutocompleteUpdate()
+    }
+
+    private var maxAutocompleteSuggestions: Int {
+        state.keyboardContext.deviceType == .pad ? 12 : 6
+    }
+
+    @objc private func handleAutocompleteTrigger() {
+        scheduleAutocompleteUpdate()
+    }
     
     override func textWillChange(_ textInput: UITextInput?) {
         super.textWillChange(textInput)
@@ -2490,6 +2699,7 @@ final class KeyboardViewController: KeyboardInputViewController {
     override func textDidChange(_ textInput: UITextInput?) {
         super.textDidChange(textInput)
         updateFullAccessFlag()
+        scheduleAutocompleteUpdate()
     }
 }
 

@@ -15,14 +15,18 @@ struct WandToolbar: View {
     let onSaveButtonTap: (() -> Void)?  // ✅ NEW: Optional callback for Save action
     let onClipboardButtonTap: (() -> Void)?  // ✅ NEW: Optional callback for Clipboard action
     let onSettingsButtonTap: (() -> Void)?  // ✅ NEW: Optional callback for Settings action
+    @ObservedObject var autocompleteModel: ToolbarAutocompleteModel
+    let onAutocompleteTap: (String) -> Void
+    let maxSuggestionsCount: Int
     let isSuggestionsVisible: () -> Bool
     let onCloseSuggestions: (() -> Void)?
     @State private var isExpanded = false
     @State private var isLastButtonVisible = false
     @State private var lastVisibleButtonIndex: Int = -1
     @State private var activeButton: ToolbarButtonType? = nil
+    @Environment(\.colorScheme) var colorScheme
     
-    init(onWandTap: @escaping () -> Void, onToneButtonTap: @escaping () -> Void, onLengthButtonTap: @escaping () -> Void, onUploadButtonTap: @escaping () -> Void, onReplyButtonTap: @escaping () -> Void, onRewriteButtonTap: @escaping () -> Void, onMenuButtonTap: @escaping () -> Void, onSaveButtonTap: (() -> Void)? = nil, onClipboardButtonTap: (() -> Void)? = nil, onSettingsButtonTap: (() -> Void)? = nil, isSuggestionsVisible: @escaping () -> Bool, onCloseSuggestions: (() -> Void)?) {
+    init(onWandTap: @escaping () -> Void, onToneButtonTap: @escaping () -> Void, onLengthButtonTap: @escaping () -> Void, onUploadButtonTap: @escaping () -> Void, onReplyButtonTap: @escaping () -> Void, onRewriteButtonTap: @escaping () -> Void, onMenuButtonTap: @escaping () -> Void, onSaveButtonTap: (() -> Void)? = nil, onClipboardButtonTap: (() -> Void)? = nil, onSettingsButtonTap: (() -> Void)? = nil, autocompleteModel: ToolbarAutocompleteModel, onAutocompleteTap: @escaping (String) -> Void, maxSuggestionsCount: Int, isSuggestionsVisible: @escaping () -> Bool, onCloseSuggestions: (() -> Void)?) {
         self.onWandTap = onWandTap
         self.onToneButtonTap = onToneButtonTap
         self.onLengthButtonTap = onLengthButtonTap
@@ -33,6 +37,9 @@ struct WandToolbar: View {
         self.onSaveButtonTap = onSaveButtonTap
         self.onClipboardButtonTap = onClipboardButtonTap
         self.onSettingsButtonTap = onSettingsButtonTap
+        self.autocompleteModel = autocompleteModel
+        self.onAutocompleteTap = onAutocompleteTap
+        self.maxSuggestionsCount = maxSuggestionsCount
         self.isSuggestionsVisible = isSuggestionsVisible
         self.onCloseSuggestions = onCloseSuggestions
     }
@@ -45,6 +52,28 @@ struct WandToolbar: View {
                     .frame(width: 44, height: 44)
             }
             .buttonStyle(PlainButtonStyle())
+
+            if !isExpanded && !autocompleteModel.suggestions.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(autocompleteModel.suggestions.prefix(suggestionLimit), id: \.self) { suggestion in
+                            Button(action: { onAutocompleteTap(suggestion) }) {
+                                Text(suggestion)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(chipTextColor)
+                                    .lineLimit(1)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(chipBackgroundColor)
+                                    .cornerRadius(10)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                    }
+                    .padding(.leading, 6)
+                }
+                .transition(.opacity)
+            }
             
             if isExpanded {
                 // Gap after X button
@@ -257,6 +286,18 @@ struct WandToolbar: View {
     
     private func triggerScrollHaptic() {
         HapticHelper.triggerScrollHaptic()
+    }
+
+    private var suggestionLimit: Int {
+        max(toolbarButtons.count + 1, maxSuggestionsCount)
+    }
+
+    private var chipTextColor: Color {
+        colorScheme == .dark ? .white : Color(white: 0.15)
+    }
+
+    private var chipBackgroundColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.2) : Color.black.opacity(0.15)
     }
     
     // State management functions

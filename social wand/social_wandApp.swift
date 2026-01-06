@@ -9,6 +9,7 @@ import SwiftUI
 
 @main
 struct social_wandApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @State private var showPhotoUpload = false
     @State private var photoUploadSourceApp = "instagram"

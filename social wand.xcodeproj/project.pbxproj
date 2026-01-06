@@ -25,6 +25,8 @@
 		C3FED57F2EEC1F3E0006E37F /* ClipboardHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3FED57E2EEC1F3E0006E37F /* ClipboardHistoryView.swift */; };
 		C3WAND0012ECC6789009BB228 /* WandToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3WAND0022ECC6789009BB228 /* WandToolbar.swift */; };
 		C3WAND0032ECC6789009BB228 /* WandIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3WAND0042ECC6789009BB228 /* WandIcon.swift */; };
+		C4CBI7E1A1B2C3D4E5F60011 /* Models/ClipboardItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CBI7E1A1B2C3D4E5F60001 /* Models/ClipboardItem.swift */; };
+		C4CCS7E1A1B2C3D4E5F60012 /* Services/CloudClipboardSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCS7E1A1B2C3D4E5F60002 /* Services/CloudClipboardSyncService.swift */; };
 		D3WMWV56SMSQ0U373JMDMNNW /* SocialWandKeyboard/Helpers/SoundHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = FGLDOTU788L8NUEMYAJ7BNA7 /* SocialWandKeyboard/Helpers/SoundHelper.swift */; };
 		E9RRORBANNERVIEWSWIFT001 /* Views/ErrorBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9RRORBANNERVIEWSWIFT002 /* Views/ErrorBannerView.swift */; };
 		F1CKACTIONHANDLERSERV001 /* Services/FlickActionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1CKACTIONHANDLERSERV002 /* Services/FlickActionHandler.swift */; };
@@ -80,6 +82,8 @@
 		C3FED57E2EEC1F3E0006E37F /* ClipboardHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardHistoryView.swift; sourceTree = "<group>"; };
 		C3WAND0022ECC6789009BB228 /* WandToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WandToolbar.swift; sourceTree = "<group>"; };
 		C3WAND0042ECC6789009BB228 /* WandIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WandIcon.swift; sourceTree = "<group>"; };
+		C4CBI7E1A1B2C3D4E5F60001 /* Models/ClipboardItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/ClipboardItem.swift; sourceTree = "<group>"; };
+		C4CCS7E1A1B2C3D4E5F60002 /* Services/CloudClipboardSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/CloudClipboardSyncService.swift; sourceTree = "<group>"; };
 		E9RRORBANNERVIEWSWIFT002 /* Views/ErrorBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/ErrorBannerView.swift; sourceTree = "<group>"; };
 		F1CKACTIONHANDLERSERV002 /* Services/FlickActionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/FlickActionHandler.swift; sourceTree = "<group>"; };
 		F1CKGESTURESTATESERV002 /* Services/FlickGestureStateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/FlickGestureStateStore.swift; sourceTree = "<group>"; };
@@ -188,9 +192,11 @@
 				C39A58032F1C000100389BE5 /* KeyboardViewController.swift */,
 				C3WAND0022ECC6789009BB228 /* WandToolbar.swift */,
 				C3WAND0042ECC6789009BB228 /* WandIcon.swift */,
+				C4CBI7E1A1B2C3D4E5F60001 /* Models/ClipboardItem.swift */,
 				X9N88Q95F5GOJ41NYAOZKPBV /* Models/KeyboardModels.swift */,
 				YBDTVRVHQQ0K1RDS1B7C5HCT /* Models/SuggestionsViewModel.swift */,
 				SHAREDSUGGESTIONDATASWIFT002 /* Models/SharedSuggestionData.swift */,
+				C4CCS7E1A1B2C3D4E5F60002 /* Services/CloudClipboardSyncService.swift */,
 				JBBCK1LSYFQYBZU27XCRVZ1E /* Services/KeyboardAIService.swift */,
 				F1CKACTIONHANDLERSERV002 /* Services/FlickActionHandler.swift */,
 				F1CKGESTURESTATESERV002 /* Services/FlickGestureStateStore.swift */,
@@ -345,12 +351,14 @@
 				C3FED57F2EEC1F3E0006E37F /* ClipboardHistoryView.swift in Sources */,
 				C3WAND0012ECC6789009BB228 /* WandToolbar.swift in Sources */,
 				C3WAND0032ECC6789009BB228 /* WandIcon.swift in Sources */,
+				C4CCS7E1A1B2C3D4E5F60012 /* Services/CloudClipboardSyncService.swift in Sources */,
 				YFWW9VIZDBOVPERHOVA2S34K /* Services/KeyboardAIService.swift in Sources */,
 				F1CKACTIONHANDLERSERV001 /* Services/FlickActionHandler.swift in Sources */,
 				F1CKGESTURESTATESERV001 /* Services/FlickGestureStateStore.swift in Sources */,
 				P3R6DATAV1PXNOFVNZQ5IEY9 /* SocialWandKeyboard/Helpers/HapticHelper.swift in Sources */,
 				D3WMWV56SMSQ0U373JMDMNNW /* SocialWandKeyboard/Helpers/SoundHelper.swift in Sources */,
 				SI3ECNMBNVTNACIDWMIPR5FD /* Models/KeyboardModels.swift in Sources */,
+				C4CBI7E1A1B2C3D4E5F60011 /* Models/ClipboardItem.swift in Sources */,
 				723K0K0JPQ3POOE5MSGUQOGU /* Models/SuggestionsViewModel.swift in Sources */,
 				C3FED57D2EEC1F270006E37F /* ClipboardManager.swift in Sources */,
 				ZXEIMORKNRB96GVNZYK4BU6D /* Views/SuggestionsView.swift in Sources */,

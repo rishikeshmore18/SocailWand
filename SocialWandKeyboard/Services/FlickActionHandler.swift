@@ -29,10 +29,22 @@ final class FlickActionHandler: KeyboardActionHandler {
     }
 
     func handle(_ action: KeyboardAction) {
+        if case .custom(let name) = action, name == "emoji" {
+            base.handle(.keyboardType(.emojis))
+            return
+        }
         base.handle(action)
     }
 
     func handle(_ gesture: Keyboard.Gesture, on action: KeyboardAction) {
+        if case .custom(let name) = action, name == "emoji" {
+            if gesture == .release || gesture == .end {
+                base.handle(.keyboardType(.emojis))
+            } else {
+                base.handle(gesture, on: action)
+            }
+            return
+        }
         if gesture == .press {
             calloutContext.resetInputAction()
             calloutContext.resetSecondaryActions()
@@ -51,6 +63,9 @@ final class FlickActionHandler: KeyboardActionHandler {
             flickState.clearProgress(for: action)
             calloutContext.resetInputAction()
             calloutContext.resetSecondaryActions()
+            if shouldTriggerAutocomplete(for: action) {
+                NotificationCenter.default.post(name: NSNotification.Name("KeyboardAutocompleteTrigger"), object: nil)
+            }
         }
     }
 
@@ -91,5 +106,14 @@ final class FlickActionHandler: KeyboardActionHandler {
         }
 
         return .character(alternate)
+    }
+
+    private func shouldTriggerAutocomplete(for action: KeyboardAction) -> Bool {
+        switch action {
+        case .character, .space, .backspace:
+            return true
+        default:
+            return false
+        }
     }
 }

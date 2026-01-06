@@ -6,49 +6,6 @@
 import Foundation
 import UIKit
 
-// MARK: - Clipboard Item Model
-
-struct ClipboardItem: Codable, Identifiable {
-    let id: String
-    let type: ClipboardItemType
-    let timestamp: Date
-    var isBookmarked: Bool
-    
-    // For text items
-    let textContent: String?
-    
-    // For image items (filenames only, not base64)
-    let imageFilename: String?
-    let thumbnailFilename: String?
-    
-    enum ClipboardItemType: String, Codable {
-        case text
-        case image
-    }
-    
-    // Text item initializer
-    init(text: String, isBookmarked: Bool = false) {
-        self.id = UUID().uuidString
-        self.type = .text
-        self.timestamp = Date()
-        self.isBookmarked = isBookmarked
-        self.textContent = text
-        self.imageFilename = nil
-        self.thumbnailFilename = nil
-    }
-    
-    // Image item initializer
-    init(imageFilename: String, thumbnailFilename: String, isBookmarked: Bool = false) {
-        self.id = UUID().uuidString
-        self.type = .image
-        self.timestamp = Date()
-        self.isBookmarked = isBookmarked
-        self.textContent = nil
-        self.imageFilename = imageFilename
-        self.thumbnailFilename = thumbnailFilename
-    }
-}
-
 // MARK: - Clipboard Manager
 
 class ClipboardManager {
@@ -107,8 +64,11 @@ class ClipboardManager {
         
         let newClip = ClipboardItem(text: text)
         allClips.insert(newClip, at: 0)
-        
-        return enforceLimit(clips: &allClips) && saveClips(allClips)
+        let saved = enforceLimit(clips: &allClips) && saveClips(allClips)
+        if saved {
+            CloudClipboardSyncService.shared.handleLocalUpsert(newClip, requiresOpenAccess: true)
+        }
+        return saved
     }
     
     private func saveImage(_ image: UIImage) -> Bool {
@@ -155,8 +115,11 @@ class ClipboardManager {
         var allClips = retrieveClips()
         let newClip = ClipboardItem(imageFilename: fullFilename, thumbnailFilename: thumbFilename)
         allClips.insert(newClip, at: 0)
-        
-        return enforceLimit(clips: &allClips) && saveClips(allClips)
+        let saved = enforceLimit(clips: &allClips) && saveClips(allClips)
+        if saved {
+            CloudClipboardSyncService.shared.handleLocalUpsert(newClip, requiresOpenAccess: true)
+        }
+        return saved
     }
     
     // MARK: - Retrieve Clips
@@ -209,7 +172,11 @@ class ClipboardManager {
             return false
         }
         clips[index].isBookmarked.toggle()
-        return saveClips(clips)
+        let saved = saveClips(clips)
+        if saved {
+            CloudClipboardSyncService.shared.handleLocalUpsert(clips[index], requiresOpenAccess: true)
+        }
+        return saved
     }
     
     // MARK: - Delete Clip
@@ -223,13 +190,18 @@ class ClipboardManager {
         }
         
         clips.removeAll { $0.id == clipID }
-        return saveClips(clips)
+        let saved = saveClips(clips)
+        if saved {
+            CloudClipboardSyncService.shared.handleLocalDelete(id: clipID, requiresOpenAccess: true)
+        }
+        return saved
     }
     
     // MARK: - Clear All
     
     func clearAll() -> Bool {
         let clips = retrieveClips()
+        let clipIDs = clips.map { $0.id }
         
         // Delete all image files
         for clip in clips where clip.type == .image {
@@ -240,6 +212,7 @@ class ClipboardManager {
             return false
         }
         defaults.removeObject(forKey: clipboardKey)
+        CloudClipboardSyncService.shared.handleLocalClear(ids: clipIDs, requiresOpenAccess: true)
         return true
     }
     
