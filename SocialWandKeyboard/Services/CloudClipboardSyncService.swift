@@ -10,6 +10,7 @@ import UIKit
 final class CloudClipboardSyncService {
     static let shared = CloudClipboardSyncService()
     static let subscriptionID = "clipboard-item-changes"
+    static let didSyncNotification = Notification.Name("CloudClipboardDidSync")
 
     private let appGroupID = "group.com.rishimore.socialwand"
     private let clipboardKey = "SavedClipboardItems"
@@ -40,7 +41,10 @@ final class CloudClipboardSyncService {
             return
         }
 
-        container.accountStatus { status, _ in
+        container.accountStatus { status, error in
+            if let error = error {
+                self.logCloudKitError(error, context: "account status")
+            }
             switch status {
             case .available:
                 completion(.available)
@@ -98,6 +102,9 @@ final class CloudClipboardSyncService {
                                 group.leave()
                             }
                         } else {
+                            if let error = error {
+                                self.logCloudKitError(error, context: "delete \(id)")
+                            }
                             group.leave()
                         }
                     }
@@ -125,6 +132,9 @@ final class CloudClipboardSyncService {
                                     upsertGroup.leave()
                                 }
                             } else {
+                                if let error = error {
+                                    self.logCloudKitError(error, context: "save \(id)")
+                                }
                                 upsertGroup.leave()
                             }
                         }
@@ -148,18 +158,29 @@ final class CloudClipboardSyncService {
                 return
             }
 
-            let query = CKQuery(recordType: self.recordType, predicate: NSPredicate(value: true))
+            // Query by a queryable field instead of matching all
+            // This avoids CloudKit trying to use recordName
+            let query = CKQuery(
+                recordType: self.recordType,
+                predicate: NSPredicate(format: "modifiedAt >= %@", Date.distantPast)
+            )
             let sort = NSSortDescriptor(key: "modifiedAt", ascending: false)
             query.sortDescriptors = [sort]
 
             self.database.perform(query, inZoneWith: nil) { records, error in
                 guard let records = records, error == nil else {
+                    if let error = error {
+                        self.logCloudKitError(error, context: "fetch")
+                    }
                     completion?(false)
                     return
                 }
 
                 let remoteClips = records.compactMap { self.clip(from: $0) }
                 self.mergeRemoteClips(remoteClips)
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: Self.didSyncNotification, object: nil)
+                }
                 completion?(true)
             }
         }
@@ -422,5 +443,13 @@ final class CloudClipboardSyncService {
     private func isOpenAccessEnabled() -> Bool {
         let defaults = UserDefaults(suiteName: appGroupID)
         return defaults?.bool(forKey: "KeyboardFullAccess") ?? false
+    }
+
+    private func logCloudKitError(_ error: Error, context: String) {
+        if let ckError = error as? CKError {
+            print("CloudClipboardSync \(context) failed: \(ckError.code.rawValue) \(ckError.localizedDescription)")
+        } else {
+            print("CloudClipboardSync \(context) failed: \(error.localizedDescription)")
+        }
     }
 }

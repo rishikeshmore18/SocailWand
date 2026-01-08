@@ -50,6 +50,10 @@ struct ClipboardHistoryView: View {
         }
         .onAppear {
             loadClips()
+            refreshFromCloud()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: CloudClipboardSyncService.didSyncNotification)) { _ in
+            loadClips()
         }
         .onDisappear {
             // Clear thumbnails from RAM when view closes
@@ -270,6 +274,13 @@ struct ClipboardHistoryView: View {
     private func loadClips() {
         clips = ClipboardManager.shared.retrieveClips()
         print("📋 Loaded \(clips.count) clips metadata")
+    }
+
+    private func refreshFromCloud() {
+        CloudClipboardSyncService.shared.checkSyncAvailability(requiresOpenAccess: true) { availability in
+            guard availability == .available else { return }
+            CloudClipboardSyncService.shared.fetchRemoteChanges()
+        }
     }
     
     private func loadThumbnailIfNeeded(for clip: ClipboardItem) {
