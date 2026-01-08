@@ -8,7 +8,7 @@ import UIKit
 
 // MARK: - Constants
 
-private let appGroupID = "group.rishi-more.social-wand"
+private let appGroupID = "group.com.rishimore.socialwand"
 
 // MARK: - Models
 

@@ -11,7 +11,7 @@ struct AlternateKeysSettingsView: View {
     @State private var showContent = false
     @State private var customMap: [String: String] = [:]
 
-    private let appGroupID = "group.rishi-more.social-wand"
+    private let appGroupID = "group.com.rishimore.socialwand"
     private let storageKey = "CustomAlternateKeys"
     private let row2Keys = ["a", "s", "d", "f", "g", "h", "j", "k", "l"]
     private let row3Keys = ["z", "x", "c", "v", "b", "n", "m"]

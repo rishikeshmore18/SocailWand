@@ -21,7 +21,7 @@ struct SharedSuggestionData {
     let length: String?
     
     // App Group suite name
-    static let suiteName = "group.rishi-more.social-wand"
+    static let suiteName = "group.com.rishimore.socialwand"
     
     // Keys for UserDefaults
     private static let suggestionKey = "GeneratedSuggestion"

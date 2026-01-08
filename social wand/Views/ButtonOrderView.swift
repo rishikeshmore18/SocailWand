@@ -11,7 +11,7 @@ struct ButtonOrderView: View {
     // All available buttons (Upload, Reply, Rewrite, Tone, Length)
     @State private var buttonOrder: [ToolbarButtonItem] = []
     
-    private let appGroupID = "group.rishi-more.social-wand"
+    private let appGroupID = "group.com.rishimore.socialwand"
     private let maxVisibleButtons = 4  // First 4 in toolbar, rest in menu
     
     var body: some View {

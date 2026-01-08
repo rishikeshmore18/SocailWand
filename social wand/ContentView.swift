@@ -288,7 +288,7 @@ private extension OnboardingHeroView {
     
     private func checkForDeepLink() {
         // Check if app was opened via deep link for photo upload
-        guard let defaults = UserDefaults(suiteName: "group.rishi-more.social-wand"),
+        guard let defaults = UserDefaults(suiteName: "group.com.rishimore.socialwand"),
               defaults.bool(forKey: "PendingPhotoUpload") else {
             return
         }

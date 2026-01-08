@@ -57,7 +57,7 @@ struct TestYourSocialSkillsView: View {
                         TraitsSelectionView { traits in
                             selectedTraits = traits
                             // Save selected trait titles for the keyboard via app group
-                            if let defaults = UserDefaults(suiteName: "group.rishi-more.social-wand") {
+                            if let defaults = UserDefaults(suiteName: "group.com.rishimore.socialwand") {
                                 let traitTitles = traits.map { $0.title }
                                 defaults.set(traitTitles, forKey: "SelectedTraitTitles")
                                 print("💾 Saved traits: \(traitTitles)")
@@ -251,7 +251,7 @@ struct TestYourSocialSkillsView: View {
     private func performPhotoUploadCheck() {
         print("🔍 Checking for pending photo upload...")
         
-        guard let defaults = UserDefaults(suiteName: "group.rishi-more.social-wand"),
+        guard let defaults = UserDefaults(suiteName: "group.com.rishimore.socialwand"),
               defaults.bool(forKey: "PendingPhotoUpload") else {
             print("❌ No pending photo upload")
             return

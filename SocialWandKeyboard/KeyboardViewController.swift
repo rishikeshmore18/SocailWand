@@ -8,7 +8,7 @@ import SwiftUI
 import KeyboardKit
 
 private enum SharedConstants {
-    static let appGroupID = "group.rishi-more.social-wand"
+    static let appGroupID = "group.com.rishimore.socialwand"
     static let fullAccessKey = "KeyboardFullAccess"
 }
 

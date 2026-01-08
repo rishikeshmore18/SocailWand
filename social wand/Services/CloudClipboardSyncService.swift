@@ -11,7 +11,7 @@ final class CloudClipboardSyncService {
     static let shared = CloudClipboardSyncService()
     static let subscriptionID = "clipboard-item-changes"
 
-    private let appGroupID = "group.rishi-more.social-wand"
+    private let appGroupID = "group.com.rishimore.socialwand"
     private let clipboardKey = "SavedClipboardItems"
     private let pendingUpsertsKey = "CloudClipboardPendingUpserts"
     private let pendingDeletesKey = "CloudClipboardPendingDeletes"
@@ -21,7 +21,7 @@ final class CloudClipboardSyncService {
     private let container: CKContainer
     private let database: CKDatabase
 
-    private init(container: CKContainer = CKContainer.default()) {
+    private init(container: CKContainer = CKContainer(identifier: "iCloud.rishi-more.social-wand")) {
         self.container = container
         self.database = container.privateCloudDatabase
     }

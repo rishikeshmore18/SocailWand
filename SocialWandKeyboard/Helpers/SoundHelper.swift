@@ -7,7 +7,7 @@ import UIKit
 import AudioToolbox
 
 struct SoundHelper {
-    private static let appGroupID = "group.rishi-more.social-wand"
+    private static let appGroupID = "group.com.rishimore.socialwand"
     private static let soundKey = "SoundFeedbackEnabled"
     
     private static let keyTapSoundID: SystemSoundID = 1104
@@ -35,6 +35,7 @@ struct SoundHelper {
         return defaults.bool(forKey: soundKey)
     }
 }
+
 
 
 

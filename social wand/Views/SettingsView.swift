@@ -10,11 +10,11 @@ struct SettingsView: View {
     @State private var showContent = false
     
     // State for sound feedback toggle
-    @AppStorage("SoundFeedbackEnabled", store: UserDefaults(suiteName: "group.rishi-more.social-wand"))
+    @AppStorage("SoundFeedbackEnabled", store: UserDefaults(suiteName: "group.com.rishimore.socialwand"))
     private var soundFeedbackEnabled: Bool = false
     
     // State for haptic feedback
-    @AppStorage("HapticFeedbackLevel", store: UserDefaults(suiteName: "group.rishi-more.social-wand"))
+    @AppStorage("HapticFeedbackLevel", store: UserDefaults(suiteName: "group.com.rishimore.socialwand"))
     private var hapticFeedbackLevel: String = "soft"  // "soft", "strong", "off"
     
     private var hapticDisplayText: String {

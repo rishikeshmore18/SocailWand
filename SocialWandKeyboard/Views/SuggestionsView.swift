@@ -31,7 +31,7 @@ struct SuggestionsView: View {
     
     // ✅ NEW: Constants
     private let maxToneSelections = 3
-    private let appGroupID = "group.rishi-more.social-wand"
+    private let appGroupID = "group.com.rishimore.socialwand"
     
     // ✅ NEW: Tone options (same as TonePickerView)
     private let tones: [ToneOption] = [

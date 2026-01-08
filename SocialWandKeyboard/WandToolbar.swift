@@ -154,7 +154,7 @@ struct WandToolbar: View {
     
     // Toolbar button definitions
     private var toolbarButtons: [(icon: String, label: String, type: ToolbarButtonType, action: () -> Void)] {
-        let appGroupID = "group.rishi-more.social-wand"
+        let appGroupID = "group.com.rishimore.socialwand"
         
         // ALL available buttons (including menu actions)
         let allButtons: [(id: String, icon: String, label: String, type: ToolbarButtonType, action: () -> Void)] = [

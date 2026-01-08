@@ -46,7 +46,7 @@ struct social_wandApp: App {
     }
     
     private func checkPendingPhotoUpload() {
-        guard let defaults = UserDefaults(suiteName: "group.rishi-more.social-wand"),
+        guard let defaults = UserDefaults(suiteName: "group.com.rishimore.socialwand"),
               defaults.bool(forKey: "PendingPhotoUpload") else {
             return
         }

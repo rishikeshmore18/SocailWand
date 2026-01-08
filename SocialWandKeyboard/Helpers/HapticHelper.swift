@@ -6,7 +6,7 @@
 import UIKit
 
 struct HapticHelper {
-    private static let appGroupID = "group.rishi-more.social-wand"
+    private static let appGroupID = "group.com.rishimore.socialwand"
     private static let hapticKey = "HapticFeedbackLevel"
     
     static func triggerHaptic(style: UIImpactFeedbackGenerator.FeedbackStyle = .medium) {

@@ -11,7 +11,7 @@ import UIKit
 class ClipboardManager {
     static let shared = ClipboardManager()
     
-    private let appGroupID = "group.rishi-more.social-wand"
+    private let appGroupID = "group.com.rishimore.socialwand"
     private let clipboardKey = "SavedClipboardItems"
     private let maxTotalItems = 7  // Reduced from 15
     

@@ -33,7 +33,7 @@ struct MenuPickerView: View {
     @Environment(\.colorScheme) var colorScheme
     
     private var menuOptions: [MenuOption] {
-        let appGroupID = "group.rishi-more.social-wand"
+        let appGroupID = "group.com.rishimore.socialwand"
         
         // All possible menu options (with correct IDs matching button order)
         let allOptions: [String: MenuOption] = [

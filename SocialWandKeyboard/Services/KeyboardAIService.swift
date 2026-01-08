@@ -47,7 +47,7 @@ final class KeyboardAIService {
 
     private let baseURL: String
     private let session: URLSession
-    private let appGroupID = "group.rishi-more.social-wand"
+    private let appGroupID = "group.com.rishimore.socialwand"
 
     private init() {
         #if DEBUG
