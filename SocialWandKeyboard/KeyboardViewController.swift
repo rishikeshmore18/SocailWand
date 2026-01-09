@@ -106,6 +106,28 @@ final class KeyboardViewController: KeyboardInputViewController {
         "n": "%", "m": "#"
     ]
     
+    private static let defaultNumericAlternateCharacterMap: [String: String] = [
+        // Row 1: Digits -> Symbols (from #+= row)
+        "1": "[", "2": "]", "3": "{", "4": "}", "5": "#",
+        "6": "%", "7": "^", "8": "*", "9": "+", "0": "=",
+        // Row 2: Symbols -> Alternates
+        "-": "_", "/": "\\", ":": "|", ";": "~", "(": "<",
+        ")": ">", "$": "€", "&": "£", "@": "¥", "\"": ".",
+        // Row 3: Punctuation -> Alternates (avoid duplicate primary)
+        ".": ":", ",": ";", "?": "/", "!": "\\", "'": "\""
+    ]
+    
+    private static let defaultSymbolicAlternateCharacterMap: [String: String] = [
+        // Row 1: Symbols -> Digits (reverse of numeric row 1)
+        "[": "1", "]": "2", "{": "3", "}": "4", "#": "5",
+        "%": "6", "^": "7", "*": "8", "+": "9", "=": "0",
+        // Row 2: Symbols -> Numeric row 2
+        "-": "/", "\\": ":", "|": ";", "~": "(", "<": ")",
+        ">": "$", "€": "&", "£": "@", "¥": "\"", ".": ".",
+        // Row 3: Punctuation -> Alternates (avoid duplicate primary)
+        ".": ":", ",": ";", "?": "/", "!": "\\", "'": "\""
+    ]
+    
     // Create the SuggestionsViewModel once
     private let suggestionsViewModel = SuggestionsViewModel()
 
@@ -193,7 +215,7 @@ final class KeyboardViewController: KeyboardInputViewController {
         state.keyboardContext.settings.isSwipeDownActionsEnabled = true
         print("✅ Enabled swipe-down actions for numeric alternatives")
 
-        let resolvedMap = resolvedAlternateCharacterMap()
+        let resolvedMap = resolvedAlternateCharacterMap(for: state.keyboardContext)
         if resolvedMap != currentAlternateCharacterMap {
             currentAlternateCharacterMap = resolvedMap
         }
@@ -319,6 +341,19 @@ final class KeyboardViewController: KeyboardInputViewController {
         return merged
     }
     
+    private func resolvedAlternateCharacterMap(for context: KeyboardContext) -> [String: String] {
+        switch context.keyboardType {
+        case .alphabetic:
+            return resolvedAlternateCharacterMap()
+        case .numeric:
+            return Self.defaultNumericAlternateCharacterMap
+        case .symbolic:
+            return Self.defaultSymbolicAlternateCharacterMap
+        default:
+            return resolvedAlternateCharacterMap()
+        }
+    }
+    
     private func makeIPhoneNumericLayout(for context: KeyboardContext) -> KeyboardLayout? {
         print("📱 makeIPhoneNumericLayout called - deviceType: \(context.deviceType)")
 
@@ -333,7 +368,11 @@ final class KeyboardViewController: KeyboardInputViewController {
         let base = KeyboardLayout.standard(for: context)
         print("✅ Base layout created successfully")
         
-        let map = currentAlternateCharacterMap
+        let map = resolvedAlternateCharacterMap(for: context)
+        if map != currentAlternateCharacterMap {
+            currentAlternateCharacterMap = map
+            installFlickActionHandlerIfNeeded(for: context, alternateMap: map)
+        }
         
         var rows = base.itemRows
         var modifiedCount = 0
@@ -365,7 +404,8 @@ final class KeyboardViewController: KeyboardInputViewController {
             for itemIndex in rows[rowIndex].indices {
                 let item = rows[rowIndex][itemIndex]
                 if case .character(let char) = item.action,
-                   let number = map[char.lowercased()] {
+                   let number = map[char.lowercased()],
+                   number.lowercased() != char.lowercased() {
                     var updated = item
                     updated.secondaryAction = .character(number)
                     rows[rowIndex][itemIndex] = updated

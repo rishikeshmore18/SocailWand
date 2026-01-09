@@ -18,7 +18,7 @@ struct FlickKeyContent: View {
                 let primaryCenterY = height * 0.68
                 let secondaryStartY = height * 0.14
                 let primaryScale = 1 - (0.18 * progress)
-                let primaryOpacity = 1 - (0.9 * progress)
+                let primaryOpacity = max(0, 1 - (1.15 * progress))
 
                 if let primary = primaryLabel {
                     Text(primary)
@@ -38,7 +38,7 @@ struct FlickKeyContent: View {
                     let weight: Font.Weight = progress > 0.4 ? .bold : .medium
                     Text(secondary)
                         .font(.system(size: primarySize, weight: weight))
-                        .foregroundColor(secondaryColor.opacity(opacity))
+                        .foregroundColor(primaryColor.opacity(opacity))
                         .position(x: width * 0.5, y: secondaryStartY + (deltaY * progress))
                         .scaleEffect(scale)
                         .allowsHitTesting(false)
@@ -68,6 +68,5 @@ struct FlickKeyContent: View {
     private var secondaryColor: Color {
         item.action
             .standardButtonForegroundColor(for: keyboardContext, isPressed: false)
-            .opacity(0.6)
     }
 }

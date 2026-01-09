@@ -4,7 +4,9 @@
 //
 
 import Foundation
+import ImageIO
 import UIKit
+import UniformTypeIdentifiers
 
 // MARK: - Clipboard Manager
 
@@ -54,19 +56,23 @@ class ClipboardManager {
     }
     
     private func saveText(_ text: String) -> Bool {
-        var allClips = retrieveClips()
+        var allClips = retrieveAllClips()
         
         // Check for duplicates
-        if allClips.contains(where: { $0.type == .text && $0.textContent == text }) {
+        if allClips.contains(where: { $0.type == .text && $0.textContent == text && !$0.isDeleted }) {
             print("⚠️ Text already saved")
             return false
         }
         
         let newClip = ClipboardItem(text: text)
         allClips.insert(newClip, at: 0)
-        let saved = enforceLimit(clips: &allClips) && saveClips(allClips)
+        let deletedClips = enforceLimit(clips: &allClips)
+        let saved = saveClips(allClips)
         if saved {
             CloudClipboardSyncService.shared.handleLocalUpsert(newClip, requiresOpenAccess: true)
+            deletedClips.forEach {
+                CloudClipboardSyncService.shared.handleLocalUpsert($0, requiresOpenAccess: true)
+            }
         }
         return saved
     }
@@ -75,18 +81,19 @@ class ClipboardManager {
         guard let clipboardDir = clipboardDirectory() else { return false }
         
         let uuid = UUID().uuidString
+        let normalized = normalizedImage(image)
         
-        // 1. Save full-size image (never loaded by keyboard)
-        let fullFilename = "image_\(uuid).png"
-        let fullURL = clipboardDir.appendingPathComponent(fullFilename)
-        
-        guard let fullData = image.pngData() else {
-            print("❌ Failed to convert image to PNG")
+        // 1. Save full-size image (compressed, visually lossless)
+        guard let fullEncoded = encodeImage(normalized, preferHEIC: true, quality: 0.9) else {
+            print("❌ Failed to encode full image")
             return false
         }
+
+        let fullFilename = "image_\(uuid).\(fullEncoded.fileExtension)"
+        let fullURL = clipboardDir.appendingPathComponent(fullFilename)
         
         do {
-            try fullData.write(to: fullURL)
+            try fullEncoded.data.write(to: fullURL)
             print("✅ Saved full image: \(fullFilename)")
         } catch {
             print("❌ Failed to save full image: \(error)")
@@ -94,17 +101,17 @@ class ClipboardManager {
         }
         
         // 2. Generate and save thumbnail (100x100)
-        let thumbnail = resizeImage(image, targetSize: CGSize(width: 100, height: 100))
-        let thumbFilename = "thumb_\(uuid).png"
-        let thumbURL = clipboardDir.appendingPathComponent(thumbFilename)
-        
-        guard let thumbData = thumbnail.pngData() else {
-            print("❌ Failed to create thumbnail")
+        let thumbnail = resizeImage(normalized, targetSize: CGSize(width: 100, height: 100))
+        guard let thumbEncoded = encodeThumbnail(thumbnail) else {
+            print("❌ Failed to encode thumbnail")
             return false
         }
+
+        let thumbFilename = "thumb_\(uuid).\(thumbEncoded.fileExtension)"
+        let thumbURL = clipboardDir.appendingPathComponent(thumbFilename)
         
         do {
-            try thumbData.write(to: thumbURL)
+            try thumbEncoded.data.write(to: thumbURL)
             print("✅ Saved thumbnail: \(thumbFilename)")
         } catch {
             print("❌ Failed to save thumbnail: \(error)")
@@ -112,12 +119,16 @@ class ClipboardManager {
         }
         
         // 3. Save metadata only
-        var allClips = retrieveClips()
+        var allClips = retrieveAllClips()
         let newClip = ClipboardItem(imageFilename: fullFilename, thumbnailFilename: thumbFilename)
         allClips.insert(newClip, at: 0)
-        let saved = enforceLimit(clips: &allClips) && saveClips(allClips)
+        let deletedClips = enforceLimit(clips: &allClips)
+        let saved = saveClips(allClips)
         if saved {
             CloudClipboardSyncService.shared.handleLocalUpsert(newClip, requiresOpenAccess: true)
+            deletedClips.forEach {
+                CloudClipboardSyncService.shared.handleLocalUpsert($0, requiresOpenAccess: true)
+            }
         }
         return saved
     }
@@ -125,6 +136,17 @@ class ClipboardManager {
     // MARK: - Retrieve Clips
     
     func retrieveClips() -> [ClipboardItem] {
+        let clips = retrieveAllClips()
+        let activeClips = clips.filter { !$0.isDeleted }
+
+        // Sort: bookmarked first, then by timestamp
+        let bookmarked = activeClips.filter { $0.isBookmarked }.sorted { $0.timestamp > $1.timestamp }
+        let regular = activeClips.filter { !$0.isBookmarked }.sorted { $0.timestamp > $1.timestamp }
+
+        return bookmarked + regular
+    }
+
+    func retrieveAllClips() -> [ClipboardItem] {
         guard let defaults = UserDefaults(suiteName: appGroupID),
               let data = defaults.data(forKey: clipboardKey) else {
             return []
@@ -134,12 +156,8 @@ class ClipboardManager {
             print("❌ Failed to decode clipboard items")
             return []
         }
-        
-        // Sort: bookmarked first, then by timestamp
-        let bookmarked = clips.filter { $0.isBookmarked }.sorted { $0.timestamp > $1.timestamp }
-        let regular = clips.filter { !$0.isBookmarked }.sorted { $0.timestamp > $1.timestamp }
-        
-        return bookmarked + regular
+
+        return clips
     }
     
     // MARK: - Load Thumbnail
@@ -167,11 +185,12 @@ class ClipboardManager {
     // MARK: - Toggle Bookmark
     
     func toggleBookmark(clipID: String) -> Bool {
-        var clips = retrieveClips()
-        guard let index = clips.firstIndex(where: { $0.id == clipID }) else {
+        var clips = retrieveAllClips()
+        guard let index = clips.firstIndex(where: { $0.id == clipID && !$0.isDeleted }) else {
             return false
         }
         clips[index].isBookmarked.toggle()
+        clips[index].markModified()
         let saved = saveClips(clips)
         if saved {
             CloudClipboardSyncService.shared.handleLocalUpsert(clips[index], requiresOpenAccess: true)
@@ -182,17 +201,21 @@ class ClipboardManager {
     // MARK: - Delete Clip
     
     func deleteClip(clipID: String) -> Bool {
-        var clips = retrieveClips()
+        var clips = retrieveAllClips()
         
-        // Find clip and delete associated files
-        if let clip = clips.first(where: { $0.id == clipID }), clip.type == .image {
-            deleteImageFiles(clip: clip)
+        guard let index = clips.firstIndex(where: { $0.id == clipID && !$0.isDeleted }) else {
+            return false
         }
-        
-        clips.removeAll { $0.id == clipID }
+
+        if clips[index].type == .image {
+            deleteImageFiles(clip: clips[index])
+        }
+
+        clips[index].isDeleted = true
+        clips[index].markModified()
         let saved = saveClips(clips)
         if saved {
-            CloudClipboardSyncService.shared.handleLocalDelete(id: clipID, requiresOpenAccess: true)
+            CloudClipboardSyncService.shared.handleLocalUpsert(clips[index], requiresOpenAccess: true)
         }
         return saved
     }
@@ -200,20 +223,24 @@ class ClipboardManager {
     // MARK: - Clear All
     
     func clearAll() -> Bool {
-        let clips = retrieveClips()
-        let clipIDs = clips.map { $0.id }
+        var clips = retrieveAllClips()
         
         // Delete all image files
-        for clip in clips where clip.type == .image {
-            deleteImageFiles(clip: clip)
+        for index in clips.indices where !clips[index].isDeleted {
+            if clips[index].type == .image {
+                deleteImageFiles(clip: clips[index])
+            }
+            clips[index].isDeleted = true
+            clips[index].markModified()
         }
         
-        guard let defaults = UserDefaults(suiteName: appGroupID) else {
-            return false
+        let saved = saveClips(clips)
+        if saved {
+            clips.forEach {
+                CloudClipboardSyncService.shared.handleLocalUpsert($0, requiresOpenAccess: true)
+            }
         }
-        defaults.removeObject(forKey: clipboardKey)
-        CloudClipboardSyncService.shared.handleLocalClear(ids: clipIDs, requiresOpenAccess: true)
-        return true
+        return saved
     }
     
     // MARK: - Memory Management
@@ -236,24 +263,32 @@ class ClipboardManager {
     
     // MARK: - Private Helpers
     
-    private func enforceLimit(clips: inout [ClipboardItem]) -> Bool {
-        let bookmarked = clips.filter { $0.isBookmarked }
-        var regular = clips.filter { !$0.isBookmarked }
+    private func enforceLimit(clips: inout [ClipboardItem]) -> [ClipboardItem] {
+        let activeClips = clips.filter { !$0.isDeleted }
+        let bookmarked = activeClips.filter { $0.isBookmarked }
+        var regular = activeClips.filter { !$0.isBookmarked }
         
         // Calculate allowed regular items
         let allowedRegular = max(0, maxTotalItems - bookmarked.count)
         
         // Remove excess regular items and delete their files
+        var deletedClips: [ClipboardItem] = []
         if regular.count > allowedRegular {
             let toRemove = regular.suffix(regular.count - allowedRegular)
-            for clip in toRemove where clip.type == .image {
-                deleteImageFiles(clip: clip)
+            for clip in toRemove {
+                if let index = clips.firstIndex(where: { $0.id == clip.id }) {
+                    if clips[index].type == .image {
+                        deleteImageFiles(clip: clips[index])
+                    }
+                    clips[index].isDeleted = true
+                    clips[index].markModified()
+                    deletedClips.append(clips[index])
+                }
             }
             regular = Array(regular.prefix(allowedRegular))
         }
         
-        clips = bookmarked + regular
-        return true
+        return deletedClips
     }
     
     private func deleteImageFiles(clip: ClipboardItem) {
@@ -286,6 +321,73 @@ class ClipboardManager {
         defaults.set(data, forKey: clipboardKey)
         print("✅ Saved \(clips.count) clipboard items")
         return true
+    }
+
+    private func normalizedImage(_ image: UIImage) -> UIImage {
+        guard image.imageOrientation != .up else { return image }
+
+        UIGraphicsBeginImageContextWithOptions(image.size, false, image.scale)
+        image.draw(in: CGRect(origin: .zero, size: image.size))
+        let normalized = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        return normalized ?? image
+    }
+
+    private func encodeImage(
+        _ image: UIImage,
+        preferHEIC: Bool,
+        quality: CGFloat
+    ) -> (data: Data, fileExtension: String)? {
+        if imageHasAlpha(image) {
+            guard let data = image.pngData() else { return nil }
+            return (data, "png")
+        }
+
+        if preferHEIC, let data = heicData(from: image, quality: quality) {
+            return (data, "heic")
+        }
+
+        guard let data = image.jpegData(compressionQuality: quality) else { return nil }
+        return (data, "jpg")
+    }
+
+    private func encodeThumbnail(_ image: UIImage) -> (data: Data, fileExtension: String)? {
+        if imageHasAlpha(image) {
+            guard let data = image.pngData() else { return nil }
+            return (data, "png")
+        }
+        guard let data = image.jpegData(compressionQuality: 0.75) else { return nil }
+        return (data, "jpg")
+    }
+
+    private func imageHasAlpha(_ image: UIImage) -> Bool {
+        guard let cgImage = image.cgImage else { return false }
+        switch cgImage.alphaInfo {
+        case .first, .last, .premultipliedFirst, .premultipliedLast:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func heicData(from image: UIImage, quality: CGFloat) -> Data? {
+        guard let cgImage = image.cgImage else { return nil }
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            data,
+            UTType.heic.identifier as CFString,
+            1,
+            nil
+        ) else {
+            return nil
+        }
+
+        let options: [CFString: Any] = [
+            kCGImageDestinationLossyCompressionQuality: quality
+        ]
+        CGImageDestinationAddImage(destination, cgImage, options as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return data as Data
     }
     
     private func resizeImage(_ image: UIImage, targetSize: CGSize) -> UIImage {

@@ -14,6 +14,9 @@ struct ClipboardHistoryView: View {
     @State private var clips: [ClipboardItem] = []
     @State private var selectedID: String? = nil
     @State private var loadedThumbnails: [String: UIImage] = [:]
+    @State private var refreshTimer: Timer? = nil
+
+    private let appGroupDefaults = UserDefaults(suiteName: "group.com.rishimore.socialwand")
     
     @Environment(\.colorScheme) var colorScheme
     
@@ -51,13 +54,18 @@ struct ClipboardHistoryView: View {
         .onAppear {
             loadClips()
             refreshFromCloud()
+            startRefreshTimer()
         }
         .onReceive(NotificationCenter.default.publisher(for: CloudClipboardSyncService.didSyncNotification)) { _ in
+            loadClips()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification, object: appGroupDefaults)) { _ in
             loadClips()
         }
         .onDisappear {
             // Clear thumbnails from RAM when view closes
             loadedThumbnails.removeAll()
+            stopRefreshTimer()
             print("🧹 Cleared \(loadedThumbnails.count) thumbnails from RAM")
         }
     }
@@ -281,6 +289,20 @@ struct ClipboardHistoryView: View {
             guard availability == .available else { return }
             CloudClipboardSyncService.shared.fetchRemoteChanges()
         }
+    }
+
+    private func startRefreshTimer() {
+        guard refreshTimer == nil else { return }
+        let timer = Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { _ in
+            refreshFromCloud()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        refreshTimer = timer
+    }
+
+    private func stopRefreshTimer() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
     }
     
     private func loadThumbnailIfNeeded(for clip: ClipboardItem) {
