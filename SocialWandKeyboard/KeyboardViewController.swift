@@ -113,20 +113,23 @@ final class KeyboardViewController: KeyboardInputViewController {
         // Row 2: Symbols -> Alternates
         "-": "_", "/": "\\", ":": "|", ";": "~", "(": "<",
         ")": ">", "$": "€", "&": "£", "@": "¥", "\"": ".",
+        "“": ".", "”": ".",
         // Row 3: Punctuation -> Alternates (avoid duplicate primary)
-        ".": ":", ",": ";", "?": "/", "!": "\\", "'": "\""
+        ".": ":", ",": ";", "?": "/", "!": "\\", "'": "\"",
+        "‘": "\"", "’": "\""
     ]
+
+    private static func normalizedAlternateKey(_ key: String) -> String {
+        switch key {
+        case "“", "”":
+            return "\""
+        case "‘", "’":
+            return "'"
+        default:
+            return key
+        }
+    }
     
-    private static let defaultSymbolicAlternateCharacterMap: [String: String] = [
-        // Row 1: Symbols -> Digits (reverse of numeric row 1)
-        "[": "1", "]": "2", "{": "3", "}": "4", "#": "5",
-        "%": "6", "^": "7", "*": "8", "+": "9", "=": "0",
-        // Row 2: Symbols -> Numeric row 2
-        "-": "/", "\\": ":", "|": ";", "~": "(", "<": ")",
-        ">": "$", "€": "&", "£": "@", "¥": "\"", ".": ".",
-        // Row 3: Punctuation -> Alternates (avoid duplicate primary)
-        ".": ":", ",": ";", "?": "/", "!": "\\", "'": "\""
-    ]
     
     // Create the SuggestionsViewModel once
     private let suggestionsViewModel = SuggestionsViewModel()
@@ -316,8 +319,14 @@ final class KeyboardViewController: KeyboardInputViewController {
             return
         }
 
+        let baseHandler: KeyboardActionHandler
+        if let existing = services.actionHandler as? FlickActionHandler {
+            baseHandler = existing.unwrappedBaseHandler
+        } else {
+            baseHandler = services.actionHandler
+        }
         services.actionHandler = FlickActionHandler(
-            base: services.actionHandler,
+            base: baseHandler,
             keyboardContext: context,
             alternateMap: alternateMap,
             flickState: flickGestureState,
@@ -340,15 +349,30 @@ final class KeyboardViewController: KeyboardInputViewController {
         }
         return merged
     }
+
+    private func resolvedNumericAlternateCharacterMap() -> [String: String] {
+        let defaults = UserDefaults(suiteName: SharedConstants.appGroupID)
+        let custom = defaults?.dictionary(forKey: "CustomNumericAlternateKeys") as? [String: String] ?? [:]
+        let allowed = Set(Self.defaultNumericAlternateCharacterMap.keys)
+        var merged = Self.defaultNumericAlternateCharacterMap
+        for (key, value) in custom {
+            let lowerKey = key.lowercased()
+            guard allowed.contains(lowerKey) else { continue }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            merged[lowerKey] = String(trimmed.prefix(1))
+        }
+        return merged
+    }
     
     private func resolvedAlternateCharacterMap(for context: KeyboardContext) -> [String: String] {
         switch context.keyboardType {
         case .alphabetic:
             return resolvedAlternateCharacterMap()
         case .numeric:
-            return Self.defaultNumericAlternateCharacterMap
+            return resolvedNumericAlternateCharacterMap()
         case .symbolic:
-            return Self.defaultSymbolicAlternateCharacterMap
+            return [:]
         default:
             return resolvedAlternateCharacterMap()
         }
@@ -379,13 +403,15 @@ final class KeyboardViewController: KeyboardInputViewController {
         let digits = Set(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"])
         let emojiAction = KeyboardAction.custom(named: "emoji")
 
-        rows.remove(.keyboardType(.emojis))
-        if !rows.hasKey(for: emojiAction) {
-            let emojiItem = base.createIdealItem(for: emojiAction, width: .input)
-            rows.insert(emojiItem, before: .space)
+        if isPhone {
+            rows.remove(.keyboardType(.emojis))
+            if !rows.hasKey(for: emojiAction) {
+                let emojiItem = base.createIdealItem(for: emojiAction, width: .input)
+                rows.insert(emojiItem, before: .space)
+            }
         }
 
-        if !isPhone {
+        if !isPhone, context.keyboardType == .alphabetic {
             if let numberRowIndex = rows.firstIndex(where: { row in
                 let rowChars = row.compactMap { item -> String? in
                     if case .character(let char) = item.action {
@@ -403,14 +429,20 @@ final class KeyboardViewController: KeyboardInputViewController {
         for rowIndex in rows.indices {
             for itemIndex in rows[rowIndex].indices {
                 let item = rows[rowIndex][itemIndex]
-                if case .character(let char) = item.action,
-                   let number = map[char.lowercased()],
-                   number.lowercased() != char.lowercased() {
-                    var updated = item
-                    updated.secondaryAction = .character(number)
+                guard case .character(let char) = item.action else { continue }
+                let lowerChar = char.lowercased()
+                let normalizedPrimary = Self.normalizedAlternateKey(lowerChar)
+                var updated = item
+
+                if let alternate = map[lowerChar] ?? map[normalizedPrimary],
+                   alternate.lowercased() != normalizedPrimary {
+                    updated.secondaryAction = .character(alternate)
                     rows[rowIndex][itemIndex] = updated
                     modifiedCount += 1
-                    print("  ✓ Added numeric alternative: \(char.uppercased()) → \(number)")
+                    print("  ✓ Added numeric alternative: \(char.uppercased()) → \(alternate)")
+                } else if map.isEmpty, item.secondaryAction != nil {
+                    updated.secondaryAction = nil
+                    rows[rowIndex][itemIndex] = updated
                 }
             }
         }
@@ -2715,11 +2747,17 @@ final class KeyboardViewController: KeyboardInputViewController {
         let lastWord = extractLastWord(from: context)
         guard !lastWord.isEmpty else { return }
 
+        let afterInput = textDocumentProxy.documentContextAfterInput ?? ""
+        let shouldInsertSpace = afterInput.isEmpty || !(afterInput.first?.isWhitespace ?? false)
+
         for _ in 0..<lastWord.count {
             textDocumentProxy.deleteBackward()
         }
 
         textDocumentProxy.insertText(suggestion)
+        if shouldInsertSpace {
+            textDocumentProxy.insertText(" ")
+        }
         scheduleAutocompleteUpdate()
     }
 

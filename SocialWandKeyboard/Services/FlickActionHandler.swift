@@ -8,6 +8,12 @@ final class FlickActionHandler: KeyboardActionHandler {
     private var flickedActions: [KeyboardAction: Bool] = [:]
     private let flickState: FlickGestureStateStore
     private let calloutContext: CalloutContext
+    var unwrappedBaseHandler: KeyboardActionHandler {
+        if let flickBase = base as? FlickActionHandler {
+            return flickBase.unwrappedBaseHandler
+        }
+        return base
+    }
 
     init(
         base: KeyboardActionHandler,
@@ -107,12 +113,26 @@ final class FlickActionHandler: KeyboardActionHandler {
     }
 
     private func alternateAction(for action: KeyboardAction) -> KeyboardAction? {
-        guard case .character(let char) = action,
-              let alternate = alternateMap[char.lowercased()] else {
-            return nil
+        guard case .character(let char) = action else { return nil }
+        let lookupKey = char.lowercased()
+        if let alternate = alternateMap[lookupKey] {
+            return .character(alternate)
         }
+        let normalizedKey = normalizedAlternateKey(lookupKey)
+        guard let alternate = alternateMap[normalizedKey] else { return nil }
 
         return .character(alternate)
+    }
+
+    private func normalizedAlternateKey(_ key: String) -> String {
+        switch key {
+        case "“", "”":
+            return "\""
+        case "‘", "’":
+            return "'"
+        default:
+            return key
+        }
     }
 
     private func shouldTriggerAutocomplete(for action: KeyboardAction) -> Bool {
