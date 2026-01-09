@@ -164,7 +164,7 @@ struct WandToolbar: View {
             ("tone", "waveform", "Tone", .tone, onToneButtonTap),
             ("length", "text.alignleft", "Length", .length, onLengthButtonTap),
             // ✅ NEW: Menu buttons (can now appear in toolbar if in positions 1-4)
-            ("save", "square.and.arrow.down", "Save", .save, {
+            ("save", "square.and.arrow.down", "Save to Clipboard", .save, {
                 // If callback provided, use it; otherwise open menu
                 if let saveAction = onSaveButtonTap {
                     saveAction()
@@ -191,9 +191,11 @@ struct WandToolbar: View {
         // Try to load saved order
         if let defaults = UserDefaults(suiteName: appGroupID),
            let savedOrder = defaults.stringArray(forKey: "ToolbarButtonOrder") {
+            let storedCount = defaults.object(forKey: "ToolbarButtonCount") as? Int
+            let toolbarCount = min(max(storedCount ?? 4, 0), allButtons.count)
             
-            // Take ONLY FIRST 4 buttons from saved order (rest go to menu)
-            let toolbarButtonIDs = Array(savedOrder.prefix(4))
+            // Take configured number of buttons for toolbar (rest go to menu)
+            let toolbarButtonIDs = Array(savedOrder.prefix(toolbarCount))
             
             // Map IDs to button definitions
             var orderedButtons: [(icon: String, label: String, type: ToolbarButtonType, action: () -> Void)] = []
@@ -204,12 +206,12 @@ struct WandToolbar: View {
                 }
             }
             
-            // If less than 4 buttons in saved order, fill with defaults
-            if orderedButtons.count < 4 {
+            // If less than toolbarCount buttons in saved order, fill with defaults
+            if orderedButtons.count < toolbarCount {
                 let existingIDs = Set(toolbarButtonIDs)
                 let remainingButtons = allButtons.filter { !existingIDs.contains($0.id) }
                 
-                for button in remainingButtons.prefix(4 - orderedButtons.count) {
+                for button in remainingButtons.prefix(toolbarCount - orderedButtons.count) {
                     orderedButtons.append((button.icon, button.label, button.type, button.action))
                 }
             }
@@ -220,8 +222,11 @@ struct WandToolbar: View {
             return orderedButtons
         }
         
-        // No saved order - use first 4 from allButtons + Menu
-        let defaultToolbarButtons = Array(allButtons.prefix(4))
+        let storedCount = UserDefaults(suiteName: appGroupID)?.object(forKey: "ToolbarButtonCount") as? Int
+        let toolbarCount = min(max(storedCount ?? 4, 0), allButtons.count)
+
+        // No saved order - use first toolbarCount from allButtons + Menu
+        let defaultToolbarButtons = Array(allButtons.prefix(toolbarCount))
         var buttons = defaultToolbarButtons.map { ($0.icon, $0.label, $0.type, $0.action) }
         buttons.append(("chevron.down", "Menu", .menu, onMenuButtonTap))
         return buttons
@@ -352,13 +357,24 @@ struct ToolbarButton: View {
             HStack(spacing: 5) {
                 Image(systemName: icon)
                     .font(.system(size: 13, weight: .semibold))
-                Text(label)
-                    .font(.system(size: 14, weight: .medium))
-                    .lineLimit(1)
+                if label == "Save to Clipboard" {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Save to")
+                        Text("Clipboard")
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .fixedSize(horizontal: true, vertical: false)
+                    .multilineTextAlignment(.leading)
+                    .layoutPriority(1)
+                } else {
+                    Text(label)
+                        .font(.system(size: 14, weight: .medium))
+                        .lineLimit(1)
+                }
             }
             .foregroundColor(textColor)
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.vertical, label == "Save to Clipboard" ? 6 : 8)
             .background(
                 isActive
                     ? Color(hex: "8B5CF6").opacity(0.2)

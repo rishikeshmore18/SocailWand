@@ -2119,16 +2119,25 @@ final class KeyboardViewController: KeyboardInputViewController {
         }
         
         // Clipboard has content, try to save
-        let saved = ClipboardManager.shared.saveCurrentClipboard()
+        let savedClip = ClipboardManager.shared.saveCurrentClipboardReturningClip()
         
-        if saved {
-            hideMenuPicker()
-            
+        if let savedClip {
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.success)
             
-            showStatusBanner(message: "Saved to Wand clipboard")
             print("✅ Saved to Wand clipboard")
+            
+            if clipboardHistoryHosting == nil {
+                closeAnyActiveView()
+                showClipboardHistory(highlightedClipID: savedClip.id)
+                updateToolbarButtonState(.clipboard, isActive: true)
+            } else {
+                NotificationCenter.default.post(
+                    name: .clipboardDidSaveClip,
+                    object: nil,
+                    userInfo: ["clipID": savedClip.id]
+                )
+            }
 
             CloudClipboardSyncService.shared.checkSyncAvailability(requiresOpenAccess: true) { [weak self] availability in
                 let message: String?
@@ -2175,7 +2184,16 @@ final class KeyboardViewController: KeyboardInputViewController {
     
     // MARK: - Clipboard History Management
     
-    private func showClipboardHistory() {
+    private func showClipboardHistory(highlightedClipID: String? = nil) {
+        if let highlightedClipID, clipboardHistoryHosting != nil {
+            NotificationCenter.default.post(
+                name: .clipboardDidSaveClip,
+                object: nil,
+                userInfo: ["clipID": highlightedClipID]
+            )
+            return
+        }
+        
         guard clipboardHistoryHosting == nil else { return }
         
         if suggestionsHosting != nil { hideSuggestionsView() }
@@ -2189,7 +2207,8 @@ final class KeyboardViewController: KeyboardInputViewController {
             },
             onClose: { [weak self] in
                 self?.hideClipboardHistory()
-            }
+            },
+            highlightedClipID: highlightedClipID
         )
         
         let hosting = UIHostingController(rootView: clipboardView)
@@ -2534,7 +2553,11 @@ final class KeyboardViewController: KeyboardInputViewController {
         statusBanner = nil
         
         // Create new status banner with custom message
-        let banner = SuggestionBannerView(message: message)
+        let banner = SuggestionBannerView(
+            message: message,
+            backgroundColor: UIColor.systemGreen.withAlphaComponent(0.95),
+            textColor: .white
+        )
         banner.translatesAutoresizingMaskIntoConstraints = false
         banner.onClose = { [weak self] in
             self?.statusBanner?.removeFromSuperview()

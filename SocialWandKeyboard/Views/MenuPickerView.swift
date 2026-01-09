@@ -42,7 +42,7 @@ struct MenuPickerView: View {
             "rewrite": MenuOption(id: "rewrite", title: "Rewrite", icon: "pencil.line", isComingSoon: false),
             "tone": MenuOption(id: "tone", title: "Tone", icon: "waveform", isComingSoon: false),
             "length": MenuOption(id: "length", title: "Length", icon: "text.alignleft", isComingSoon: false),
-            "save": MenuOption(id: "save", title: "Save", icon: "square.and.arrow.down", isComingSoon: false),
+            "save": MenuOption(id: "save", title: "Save to Clipboard", icon: "square.and.arrow.down", isComingSoon: false),
             "clipboard": MenuOption(id: "clipboard", title: "Clipboard", icon: "list.clipboard", isComingSoon: false),
             "settings": MenuOption(id: "settings", title: "Settings", icon: "gearshape", isComingSoon: false)
         ]
@@ -50,9 +50,11 @@ struct MenuPickerView: View {
         // Try to load saved order
         if let defaults = UserDefaults(suiteName: appGroupID),
            let savedOrder = defaults.stringArray(forKey: "ToolbarButtonOrder") {
+            let storedCount = defaults.object(forKey: "ToolbarButtonCount") as? Int
+            let toolbarCount = min(max(storedCount ?? 4, 0), savedOrder.count)
             
-            // Menu shows buttons 5-8 (indices 4-7)
-            let menuButtonIDs = Array(savedOrder.dropFirst(4))
+            // Menu shows buttons after toolbarCount
+            let menuButtonIDs = Array(savedOrder.dropFirst(toolbarCount))
             
             // Map IDs to menu options
             var options: [MenuOption] = menuButtonIDs.compactMap { allOptions[$0] }
@@ -67,7 +69,7 @@ struct MenuPickerView: View {
         // Default button order: Upload, Reply, Rewrite, Tone (toolbar) | Length, Save, Clipboard, Settings (menu)
         return [
             MenuOption(id: "length", title: "Length", icon: "text.alignleft", isComingSoon: false),
-            MenuOption(id: "save", title: "Save", icon: "square.and.arrow.down", isComingSoon: false),
+            MenuOption(id: "save", title: "Save to Clipboard", icon: "square.and.arrow.down", isComingSoon: false),
             MenuOption(id: "clipboard", title: "Clipboard", icon: "list.clipboard", isComingSoon: false),
             MenuOption(id: "settings", title: "Settings", icon: "gearshape", isComingSoon: false),
             MenuOption(id: "comingSoon", title: "Coming Soon", icon: "sparkles", isComingSoon: true)
@@ -344,4 +346,3 @@ private struct MenuCardMetrics {
         }
     }
 }
-

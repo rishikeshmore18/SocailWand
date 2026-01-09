@@ -10,9 +10,10 @@ struct ButtonOrderView: View {
     
     // All available buttons (Upload, Reply, Rewrite, Tone, Length)
     @State private var buttonOrder: [ToolbarButtonItem] = []
+    @State private var toolbarCount: Int = 4
     
     private let appGroupID = "group.com.rishimore.socialwand"
-    private let maxVisibleButtons = 4  // First 4 in toolbar, rest in menu
+    private let toolbarCountKey = "ToolbarButtonCount"
     
     var body: some View {
         VStack(spacing: 0) {
@@ -22,7 +23,7 @@ struct ButtonOrderView: View {
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white)
                 
-                Text("First 4 buttons appear in toolbar\nRemaining buttons move to Menu")
+                Text("Drag the divider to set Toolbar vs Menu")
                     .font(.system(size: 14))
                     .foregroundColor(.gray)
                     .multilineTextAlignment(.center)
@@ -32,22 +33,26 @@ struct ButtonOrderView: View {
             
             // Reorderable list
             List {
-                ForEach(Array(buttonOrder.enumerated()), id: \.element.id) { index, button in
-                    buttonRow(button)
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                    
-                    // Insert separator after 4th button (index 3, 0-indexed)
-                    if index == maxVisibleButtons - 1 && buttonOrder.count > maxVisibleButtons {
+                ForEach(rowIDs, id: \.self) { rowID in
+                    if rowID == dividerRowID {
                         separatorRow
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
                             .listRowInsets(EdgeInsets())
+                    } else if let button = buttonOrder.first(where: { $0.id == rowID }) {
+                        buttonRow(button)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                     }
                 }
                 .onMove { from, to in
-                    buttonOrder.move(fromOffsets: from, toOffset: to)
+                    var updatedRowIDs = rowIDs
+                    updatedRowIDs.move(fromOffsets: from, toOffset: to)
+                    toolbarCount = updatedRowIDs.firstIndex(of: dividerRowID) ?? 0
+
+                    let lookup = Dictionary(uniqueKeysWithValues: buttonOrder.map { ($0.id, $0) })
+                    buttonOrder = updatedRowIDs.compactMap { lookup[$0] }
                     saveButtonOrder()
                 }
             }
@@ -104,9 +109,9 @@ struct ButtonOrderView: View {
             
             // Location indicator
             if let index = buttonOrder.firstIndex(where: { $0.id == button.id }) {
-                Text(index < maxVisibleButtons ? "Toolbar" : "Menu")
+                Text(index < toolbarCount ? "Toolbar" : "Menu")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(index < maxVisibleButtons ? Color(hex: "8B5CF6") : .gray)
+                    .foregroundColor(index < toolbarCount ? Color(hex: "8B5CF6") : .gray)
             }
         }
         .padding(.vertical, 8)
@@ -134,10 +139,22 @@ struct ButtonOrderView: View {
         .padding(.horizontal, 16)
     }
     
+    private var dividerRowID: String {
+        "toolbar-divider"
+    }
+
+    private var rowIDs: [String] {
+        var ids = buttonOrder.map { $0.id }
+        let clampedCount = min(max(toolbarCount, 0), ids.count)
+        ids.insert(dividerRowID, at: clampedCount)
+        return ids
+    }
+
     private func loadButtonOrder() {
         guard let defaults = UserDefaults(suiteName: appGroupID) else {
             // Use default order if can't access App Group
             buttonOrder = defaultButtonOrder()
+            toolbarCount = min(4, buttonOrder.count)
             return
         }
         
@@ -156,8 +173,12 @@ struct ButtonOrderView: View {
         } else {
             // No saved order - use default
             buttonOrder = defaultButtonOrder()
+            toolbarCount = min(4, buttonOrder.count)
             saveButtonOrder()  // Save default order
         }
+
+        let storedCount = defaults.object(forKey: toolbarCountKey) as? Int
+        toolbarCount = min(max(storedCount ?? 4, 0), buttonOrder.count)
     }
     
     private func saveButtonOrder() {
@@ -168,6 +189,7 @@ struct ButtonOrderView: View {
         
         let orderIDs = buttonOrder.map { $0.id }
         defaults.set(orderIDs, forKey: "ToolbarButtonOrder")
+        defaults.set(toolbarCount, forKey: toolbarCountKey)
         defaults.synchronize()
         
         print("✅ Saved button order: \(buttonOrder.map { $0.label })")
@@ -184,7 +206,7 @@ struct ButtonOrderView: View {
             ToolbarButtonItem(id: "tone", label: "Tone", icon: "waveform"),
             ToolbarButtonItem(id: "length", label: "Length", icon: "text.alignleft"),
             // ✅ NEW: Menu buttons (positions 5-7 by default)
-            ToolbarButtonItem(id: "save", label: "Save", icon: "square.and.arrow.down"),
+            ToolbarButtonItem(id: "save", label: "Save to Clipboard", icon: "square.and.arrow.down"),
             ToolbarButtonItem(id: "clipboard", label: "Clipboard", icon: "list.clipboard"),
             ToolbarButtonItem(id: "settings", label: "Settings", icon: "gearshape")
         ]
@@ -202,4 +224,3 @@ struct ToolbarButtonItem: Identifiable, Equatable {
         ButtonOrderView()
     }
 }
-

@@ -42,6 +42,10 @@ class ClipboardManager {
     // MARK: - Save Clip
     
     func saveCurrentClipboard() -> Bool {
+        return saveCurrentClipboardReturningClip() != nil
+    }
+    
+    func saveCurrentClipboardReturningClip() -> ClipboardItem? {
         let pasteboard = UIPasteboard.general
         
         // Priority: Try image first, then text
@@ -51,17 +55,17 @@ class ClipboardManager {
             return saveText(text)
         } else {
             print("⚠️ Clipboard is empty")
-            return false
+            return nil
         }
     }
     
-    private func saveText(_ text: String) -> Bool {
+    private func saveText(_ text: String) -> ClipboardItem? {
         var allClips = retrieveAllClips()
         
         // Check for duplicates
         if allClips.contains(where: { $0.type == .text && $0.textContent == text && !$0.isDeleted }) {
             print("⚠️ Text already saved")
-            return false
+            return nil
         }
         
         let newClip = ClipboardItem(text: text)
@@ -74,11 +78,11 @@ class ClipboardManager {
                 CloudClipboardSyncService.shared.handleLocalUpsert($0, requiresOpenAccess: true)
             }
         }
-        return saved
+        return saved ? newClip : nil
     }
     
-    private func saveImage(_ image: UIImage) -> Bool {
-        guard let clipboardDir = clipboardDirectory() else { return false }
+    private func saveImage(_ image: UIImage) -> ClipboardItem? {
+        guard let clipboardDir = clipboardDirectory() else { return nil }
         
         let uuid = UUID().uuidString
         let normalized = normalizedImage(image)
@@ -86,7 +90,7 @@ class ClipboardManager {
         // 1. Save full-size image (compressed, visually lossless)
         guard let fullEncoded = encodeImage(normalized, preferHEIC: true, quality: 0.9) else {
             print("❌ Failed to encode full image")
-            return false
+            return nil
         }
 
         let fullFilename = "image_\(uuid).\(fullEncoded.fileExtension)"
@@ -97,14 +101,14 @@ class ClipboardManager {
             print("✅ Saved full image: \(fullFilename)")
         } catch {
             print("❌ Failed to save full image: \(error)")
-            return false
+            return nil
         }
         
         // 2. Generate and save thumbnail (100x100)
         let thumbnail = resizeImage(normalized, targetSize: CGSize(width: 100, height: 100))
         guard let thumbEncoded = encodeThumbnail(thumbnail) else {
             print("❌ Failed to encode thumbnail")
-            return false
+            return nil
         }
 
         let thumbFilename = "thumb_\(uuid).\(thumbEncoded.fileExtension)"
@@ -115,7 +119,7 @@ class ClipboardManager {
             print("✅ Saved thumbnail: \(thumbFilename)")
         } catch {
             print("❌ Failed to save thumbnail: \(error)")
-            return false
+            return nil
         }
         
         // 3. Save metadata only
@@ -130,7 +134,7 @@ class ClipboardManager {
                 CloudClipboardSyncService.shared.handleLocalUpsert($0, requiresOpenAccess: true)
             }
         }
-        return saved
+        return saved ? newClip : nil
     }
     
     // MARK: - Retrieve Clips

@@ -6,15 +6,22 @@
 import SwiftUI
 import UIKit
 
+extension Notification.Name {
+    static let clipboardDidSaveClip = Notification.Name("ClipboardDidSaveClip")
+}
+
 struct ClipboardHistoryView: View {
     
     let onPaste: (ClipboardItem) -> Void
     let onClose: () -> Void
+    let highlightedClipID: String?
     
     @State private var clips: [ClipboardItem] = []
     @State private var selectedID: String? = nil
+    @State private var highlightedID: String? = nil
     @State private var loadedThumbnails: [String: UIImage] = [:]
     @State private var refreshTimer: Timer? = nil
+    @State private var highlightWorkItem: DispatchWorkItem? = nil
 
     private let appGroupDefaults = UserDefaults(suiteName: "group.com.rishimore.socialwand")
     
@@ -34,18 +41,30 @@ struct ClipboardHistoryView: View {
                     VStack(spacing: 0) {
                         header(metrics: metrics)
                         
-                        ScrollView {
-                            VStack(spacing: metrics.cardSpacing) {
-                                ForEach(clips) { clip in
-                                    clipCard(clip: clip, metrics: metrics)
-                                        .onAppear {
-                                            loadThumbnailIfNeeded(for: clip)
-                                        }
+                        ScrollViewReader { proxy in
+                            ScrollView {
+                                VStack(spacing: metrics.cardSpacing) {
+                                    ForEach(clips) { clip in
+                                        clipCard(clip: clip, metrics: metrics)
+                                            .id(clip.id)
+                                            .onAppear {
+                                                loadThumbnailIfNeeded(for: clip)
+                                            }
+                                    }
                                 }
+                                .padding(.horizontal, metrics.horizontalPadding)
+                                .padding(.top, metrics.contentTopPadding)
+                                .padding(.bottom, metrics.bottomPadding)
                             }
-                            .padding(.horizontal, metrics.horizontalPadding)
-                            .padding(.top, metrics.contentTopPadding)
-                            .padding(.bottom, metrics.bottomPadding)
+                            .onAppear {
+                                scrollToHighlighted(proxy)
+                            }
+                            .onChange(of: highlightedID) { _, _ in
+                                scrollToHighlighted(proxy)
+                            }
+                            .onChange(of: clips.map(\.id)) { _, _ in
+                                scrollToHighlighted(proxy)
+                            }
                         }
                     }
                 }
@@ -55,6 +74,9 @@ struct ClipboardHistoryView: View {
             loadClips()
             refreshFromCloud()
             startRefreshTimer()
+            if let highlightedClipID {
+                highlightClip(id: highlightedClipID)
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: CloudClipboardSyncService.didSyncNotification)) { _ in
             loadClips()
@@ -62,10 +84,17 @@ struct ClipboardHistoryView: View {
         .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification, object: appGroupDefaults)) { _ in
             loadClips()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .clipboardDidSaveClip)) { notification in
+            if let clipID = notification.userInfo?["clipID"] as? String {
+                highlightClip(id: clipID)
+            }
+        }
         .onDisappear {
             // Clear thumbnails from RAM when view closes
             loadedThumbnails.removeAll()
             stopRefreshTimer()
+            highlightWorkItem?.cancel()
+            highlightWorkItem = nil
             print("🧹 Cleared \(loadedThumbnails.count) thumbnails from RAM")
         }
     }
@@ -96,6 +125,7 @@ struct ClipboardHistoryView: View {
     
     private func clipCard(clip: ClipboardItem, metrics: ClipboardMetrics) -> some View {
         let isSelected = selectedID == clip.id
+        let isHighlighted = highlightedID == clip.id && !isSelected
         
         return ZStack {
             // Main card button (for tap to select)
@@ -151,11 +181,18 @@ struct ClipboardHistoryView: View {
                 .padding(.horizontal, metrics.cardHorizontalPadding)
                 .padding(.vertical, metrics.cardVerticalPadding)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(cardBackground)
+                .background(
+                    ZStack {
+                        cardBackground
+                        if isHighlighted {
+                            Color(hex: "8B5CF6").opacity(0.12)
+                        }
+                    }
+                )
                 .overlay(
                     RoundedRectangle(cornerRadius: metrics.cornerRadius)
                         .stroke(
-                            isSelected ? Color(hex: "8B5CF6") : Color.gray.opacity(0.3),
+                            isSelected ? Color(hex: "8B5CF6") : (isHighlighted ? Color(hex: "8B5CF6").opacity(0.7) : Color.gray.opacity(0.3)),
                             lineWidth: isSelected ? metrics.borderWidth : 1.5
                         )
                 )
@@ -268,7 +305,7 @@ struct ClipboardHistoryView: View {
             Text("No saved clips")
                 .font(.system(size: 20, weight: .bold))
             
-            Text("Tap 'Save' to save items")
+            Text("Tap 'Save to Clipboard' to save items")
                 .font(.system(size: 15))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -326,6 +363,29 @@ struct ClipboardHistoryView: View {
             // Selecting
             selectedID = id
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        }
+    }
+
+    private func highlightClip(id: String) {
+        highlightedID = id
+        highlightWorkItem?.cancel()
+        let workItem = DispatchWorkItem {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                if highlightedID == id {
+                    highlightedID = nil
+                }
+            }
+        }
+        highlightWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0, execute: workItem)
+    }
+
+    private func scrollToHighlighted(_ proxy: ScrollViewProxy) {
+        guard let id = highlightedID else { return }
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                proxy.scrollTo(id, anchor: .center)
+            }
         }
     }
     

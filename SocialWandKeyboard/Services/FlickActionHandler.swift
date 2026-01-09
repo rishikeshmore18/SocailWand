@@ -27,7 +27,7 @@ final class FlickActionHandler: KeyboardActionHandler {
         self.flickState = flickState
         self.calloutContext = calloutContext
         let rowHeight = KeyboardLayout.DeviceConfiguration.standard(for: keyboardContext).rowHeight
-        self.flickThreshold = rowHeight * 0.26
+        self.flickThreshold = rowHeight * 0.28
     }
 
     func canHandle(_ gesture: Keyboard.Gesture, on action: KeyboardAction) -> Bool {
