@@ -41,7 +41,7 @@ struct TonePickerView: View {
     
     @Environment(\.colorScheme) var colorScheme
     
-    private let maxSelections = 3
+    private let maxSelections = 2
     
     private let tones: [ToneOption] = [
         ToneOption(id: "assertive", title: "Assertive", emoji: "💪", isComingSoon: false),

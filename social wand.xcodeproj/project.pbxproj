@@ -12,6 +12,7 @@
 		C300DD4B2ECC5521009BB228 /* KeyboardKit in Frameworks */ = {isa = PBXBuildFile; productRef = C300DD4A2ECC5521009BB228 /* KeyboardKit */; };
 		C31B11DA2EE97939009DF674 /* Views/TonePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = T9NEPICKERVIEWSWIFT002 /* Views/TonePickerView.swift */; };
 		C31B11DB2EE9794E009DF674 /* Views/LengthPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = L9NEPICKERVIEWSWIFT002 /* Views/LengthPickerView.swift */; };
+		C347D6772F14A316000748E6 /* TranslatePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C347D6762F14A316000748E6 /* TranslatePickerView.swift */; };
 		C39A57002EC1A2AB00389BE5 /* Alamofire in Frameworks */ = {isa = PBXBuildFile; productRef = C39A57012EC1A2AB00389BE5 /* Alamofire */; };
 		C39A57022EC1A8F200389BE5 /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = C39A57082EC1A8F200389BE5 /* FirebaseAnalytics */; };
 		C39A57042EC1A8F200389BE5 /* SwiftyJSON in Frameworks */ = {isa = PBXBuildFile; productRef = C39A570A2EC1A8F200389BE5 /* SwiftyJSON */; };
@@ -25,6 +26,7 @@
 		C3FED57F2EEC1F3E0006E37F /* ClipboardHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3FED57E2EEC1F3E0006E37F /* ClipboardHistoryView.swift */; };
 		C3WAND0012ECC6789009BB228 /* WandToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3WAND0022ECC6789009BB228 /* WandToolbar.swift */; };
 		C3WAND0032ECC6789009BB228 /* WandIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3WAND0042ECC6789009BB228 /* WandIcon.swift */; };
+		C4A1B2C3D4E5F60011223345 /* Models/TranslateLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4A1B2C3D4E5F60011223344 /* Models/TranslateLanguage.swift */; };
 		C4CBI7E1A1B2C3D4E5F60011 /* Models/ClipboardItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CBI7E1A1B2C3D4E5F60001 /* Models/ClipboardItem.swift */; };
 		C4CCS7E1A1B2C3D4E5F60012 /* Services/CloudClipboardSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCS7E1A1B2C3D4E5F60002 /* Services/CloudClipboardSyncService.swift */; };
 		D3WMWV56SMSQ0U373JMDMNNW /* SocialWandKeyboard/Helpers/SoundHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = FGLDOTU788L8NUEMYAJ7BNA7 /* SocialWandKeyboard/Helpers/SoundHelper.swift */; };
@@ -72,6 +74,7 @@
 
 /* Begin PBXFileReference section */
 		588L5I7U3LGEZIOTMEJ2RD8U /* Views/SuggestionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/SuggestionsView.swift; sourceTree = "<group>"; };
+		C347D6762F14A316000748E6 /* TranslatePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TranslatePickerView.swift; path = Views/TranslatePickerView.swift; sourceTree = "<group>"; };
 		C3644D9C2EC6F6CE00B63C69 /* SocialWandKeyboard.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SocialWandKeyboard.entitlements; sourceTree = "<group>"; };
 		C39A56082EBD923E00389BE5 /* social wand.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "social wand.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		C39A58012F1C000100389BE5 /* SocialWandKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SocialWandKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -82,6 +85,7 @@
 		C3FED57E2EEC1F3E0006E37F /* ClipboardHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardHistoryView.swift; sourceTree = "<group>"; };
 		C3WAND0022ECC6789009BB228 /* WandToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WandToolbar.swift; sourceTree = "<group>"; };
 		C3WAND0042ECC6789009BB228 /* WandIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WandIcon.swift; sourceTree = "<group>"; };
+		C4A1B2C3D4E5F60011223344 /* Models/TranslateLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/TranslateLanguage.swift; sourceTree = "<group>"; };
 		C4CBI7E1A1B2C3D4E5F60001 /* Models/ClipboardItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/ClipboardItem.swift; sourceTree = "<group>"; };
 		C4CCS7E1A1B2C3D4E5F60002 /* Services/CloudClipboardSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/CloudClipboardSyncService.swift; sourceTree = "<group>"; };
 		E9RRORBANNERVIEWSWIFT002 /* Views/ErrorBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/ErrorBannerView.swift; sourceTree = "<group>"; };
@@ -186,6 +190,7 @@
 		C39A58022F1C000100389BE5 /* SocialWandKeyboard */ = {
 			isa = PBXGroup;
 			children = (
+				C347D6762F14A316000748E6 /* TranslatePickerView.swift */,
 				C3644D9C2EC6F6CE00B63C69 /* SocialWandKeyboard.entitlements */,
 				C3FED57E2EEC1F3E0006E37F /* ClipboardHistoryView.swift */,
 				C3FED57C2EEC1F270006E37F /* ClipboardManager.swift */,
@@ -194,6 +199,7 @@
 				C3WAND0042ECC6789009BB228 /* WandIcon.swift */,
 				C4CBI7E1A1B2C3D4E5F60001 /* Models/ClipboardItem.swift */,
 				X9N88Q95F5GOJ41NYAOZKPBV /* Models/KeyboardModels.swift */,
+				C4A1B2C3D4E5F60011223344 /* Models/TranslateLanguage.swift */,
 				YBDTVRVHQQ0K1RDS1B7C5HCT /* Models/SuggestionsViewModel.swift */,
 				SHAREDSUGGESTIONDATASWIFT002 /* Models/SharedSuggestionData.swift */,
 				C4CCS7E1A1B2C3D4E5F60002 /* Services/CloudClipboardSyncService.swift */,
@@ -348,6 +354,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C39A580B2F1C000100389BE5 /* KeyboardViewController.swift in Sources */,
+				C347D6772F14A316000748E6 /* TranslatePickerView.swift in Sources */,
 				C3FED57F2EEC1F3E0006E37F /* ClipboardHistoryView.swift in Sources */,
 				C3WAND0012ECC6789009BB228 /* WandToolbar.swift in Sources */,
 				C3WAND0032ECC6789009BB228 /* WandIcon.swift in Sources */,
@@ -359,6 +366,7 @@
 				D3WMWV56SMSQ0U373JMDMNNW /* SocialWandKeyboard/Helpers/SoundHelper.swift in Sources */,
 				SI3ECNMBNVTNACIDWMIPR5FD /* Models/KeyboardModels.swift in Sources */,
 				C4CBI7E1A1B2C3D4E5F60011 /* Models/ClipboardItem.swift in Sources */,
+				C4A1B2C3D4E5F60011223345 /* Models/TranslateLanguage.swift in Sources */,
 				723K0K0JPQ3POOE5MSGUQOGU /* Models/SuggestionsViewModel.swift in Sources */,
 				C3FED57D2EEC1F270006E37F /* ClipboardManager.swift in Sources */,
 				ZXEIMORKNRB96GVNZYK4BU6D /* Views/SuggestionsView.swift in Sources */,

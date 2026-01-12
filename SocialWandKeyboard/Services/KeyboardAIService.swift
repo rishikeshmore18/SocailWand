@@ -470,6 +470,68 @@ final class KeyboardAIService {
         }
     }
 
+    // MARK: - Translation
+
+    func translateText(_ text: String, to language: TranslateLanguage, previousOutputs: [String] = []) async throws -> [String] {
+
+        guard let url = URL(string: "\(baseURL)/api/translate") else {
+            throw KeyboardAIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let requestBody: [String: Any] = [
+            "text": text,
+            "languageId": language.id,
+            "languageName": language.name,
+            "previousOutputs": previousOutputs
+        ]
+
+        request.httpBody = try? JSONSerialization.data(withJSONObject: requestBody)
+
+        do {
+            let (data, response) = try await session.data(for: request)
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw KeyboardAIError.invalidResponse
+            }
+
+            if !(200...299).contains(httpResponse.statusCode) {
+                try throwForHTTPFailure(endpoint: "/api/translate", statusCode: httpResponse.statusCode, data: data)
+            }
+
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let alternatives = json["alternatives"] as? [String], alternatives.count >= 2 {
+                debugLog("✅ [KeyboardAIService] /api/translate -> \(alternatives.count) alternatives")
+                return Array(alternatives.prefix(2))
+            }
+
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let result = json["result"] as? String {
+                debugLog("⚠️ [KeyboardAIService] /api/translate single result format, duplicating")
+                return [result, result]
+            }
+
+            throw KeyboardAIError.invalidResponse
+
+        } catch let error as KeyboardAIError {
+            throw error
+        } catch let error as URLError {
+            if error.code == .notConnectedToInternet || error.code == .networkConnectionLost {
+                throw KeyboardAIError.networkError
+            } else if error.code == .timedOut {
+                throw KeyboardAIError.serviceUnavailable("Request timed out")
+            } else {
+                throw KeyboardAIError.networkError
+            }
+        } catch {
+            debugLog("❌ [KeyboardAIService] /api/translate unexpected error: \(error)")
+            throw KeyboardAIError.invalidResponse
+        }
+    }
+
     // MARK: - Private Methods
 
     private func loadTraits() -> [String]? {

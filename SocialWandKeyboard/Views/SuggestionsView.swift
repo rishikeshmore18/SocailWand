@@ -28,9 +28,13 @@ struct SuggestionsView: View {
     // ✅ NEW: Track original state to prevent unnecessary regeneration
     @State private var originalToneIDs: Set<String> = []
     @State private var originalLengthID: String? = nil
+
+    @State private var generateMoreFrame: CGRect = .zero
+    @State private var containerSize: CGSize = .zero
+    @State private var isGenerateMoreVisible: Bool = false
     
     // ✅ NEW: Constants
-    private let maxToneSelections = 3
+    private let maxToneSelections = 2
     private let appGroupID = "group.com.rishimore.socialwand"
     
     // ✅ NEW: Tone options (same as TonePickerView)
@@ -43,6 +47,13 @@ struct SuggestionsView: View {
         ToneOption(id: "professional", title: "Professional", emoji: "💼", isComingSoon: false),
         ToneOption(id: "casual", title: "Casual", emoji: "🤙", isComingSoon: false)
     ]
+
+    private var translationLanguage: TranslateLanguage? {
+        if case .translationGeneration(_, let language) = viewModel.lastOperation {
+            return language
+        }
+        return nil
+    }
     
     // MARK: - Body
     
@@ -66,6 +77,16 @@ struct SuggestionsView: View {
                             EmptyView()
                         }
                     }
+                }
+            }
+            .coordinateSpace(name: "SuggestionsScroll")
+            .onPreferenceChange(GenerateMoreFramePreferenceKey.self) { frame in
+                generateMoreFrame = frame
+                if containerSize != .zero {
+                    let visibleRect = CGRect(origin: .zero, size: containerSize)
+                    isGenerateMoreVisible = frame.intersects(visibleRect)
+                } else {
+                    isGenerateMoreVisible = false
                 }
             }
             
@@ -121,7 +142,20 @@ struct SuggestionsView: View {
                 .transition(.scale(scale: 0.9).combined(with: .opacity))
             }
             
+            floatingActionButtons
+            
         }
+        .background(
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear {
+                        containerSize = proxy.size
+                    }
+                    .onChange(of: proxy.size) { _, newSize in
+                        containerSize = newSize
+                    }
+            }
+        )
         .onAppear {
             // Sync local state with viewModel
             selectedToneIDs = Set(viewModel.currentTones)
@@ -132,6 +166,96 @@ struct SuggestionsView: View {
         }
         .onChange(of: viewModel.currentLength) { oldValue, newValue in
             selectedLengthID = newValue
+        }
+    }
+
+    @ViewBuilder
+    private func translationFloatingButton(language: TranslateLanguage) -> some View {
+        Button(action: {
+            triggerHaptic(style: .light)
+            viewModel.onShowTranslatePicker?()
+        }) {
+            HStack(spacing: 8) {
+                Text(language.flag)
+                    .font(.system(size: 16))
+                Text(language.name)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                LinearGradient(
+                    colors: [Color(hex: "8B5CF6"), Color(hex: "7C3AED")],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .cornerRadius(14)
+            .shadow(color: Color.black.opacity(0.25), radius: 6, x: 0, y: 3)
+        }
+        .accessibilityLabel("Change translation language")
+    }
+
+    @ViewBuilder
+    private func floatingGenerateMoreButton(isVisible: Bool) -> some View {
+        Button(action: {
+            triggerHaptic(style: .light)
+            viewModel.onGenerateMore?()
+        }) {
+            Image(systemName: "arrow.clockwise")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(.white)
+                .frame(width: 44, height: 44)
+                .background(
+                    LinearGradient(
+                        colors: [Color(hex: "8B5CF6"), Color(hex: "7C3AED")],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .clipShape(Circle())
+                .shadow(color: Color.black.opacity(0.25), radius: 6, x: 0, y: 3)
+        }
+        .scaleEffect(isVisible ? 1.0 : 0.7)
+        .opacity(isVisible ? 1.0 : 0.0)
+        .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isVisible)
+        .accessibilityLabel("Generate more suggestions")
+    }
+
+    private var shouldShowFloatingGenerateMore: Bool {
+        if viewModel.state.isLoading { return false }
+        if viewModel.suggestions.isEmpty { return false }
+        return !isGenerateMoreVisible
+    }
+
+    @ViewBuilder
+    private var floatingActionButtons: some View {
+        let showGenerateMore = shouldShowFloatingGenerateMore
+        let language = translationLanguage
+
+        if showGenerateMore || language != nil {
+            HStack(spacing: 8) {
+                if let language = language {
+                    translationFloatingButton(language: language)
+                }
+                if showGenerateMore {
+                    floatingGenerateMoreButton(isVisible: showGenerateMore)
+                }
+            }
+            .padding(.trailing, 16)
+            .padding(.bottom, 16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            .zIndex(150)
+        }
+    }
+
+    private struct GenerateMoreFramePreferenceKey: PreferenceKey {
+        static var defaultValue: CGRect = .zero
+
+        static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+            value = nextValue()
         }
     }
     
@@ -337,6 +461,14 @@ struct SuggestionsView: View {
                     .stroke(Color(hex: "8B5CF6"), lineWidth: 2)
             )
         }
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: GenerateMoreFramePreferenceKey.self,
+                    value: proxy.frame(in: .named("SuggestionsScroll"))
+                )
+            }
+        )
     }
     
     private var batchSeparator: some View {
@@ -394,38 +526,50 @@ struct SuggestionsView: View {
     @ViewBuilder
     private var toneChip: some View {
         if !selectedToneIDs.isEmpty {
-            Button(action: {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                    showToneDropdown.toggle()
-                    showBlurOverlay = showToneDropdown
-                    if showToneDropdown {
-                        showLengthDropdown = false
-                        originalToneIDs = selectedToneIDs
+            HStack(spacing: 6) {
+                Button(action: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                        showToneDropdown.toggle()
+                        showBlurOverlay = showToneDropdown
+                        if showToneDropdown {
+                            showLengthDropdown = false
+                            originalToneIDs = selectedToneIDs
+                        }
                     }
+                    triggerHaptic(style: .light)
+                }) {
+                    HStack(spacing: 4) {
+                        Text("\(selectedToneIDs.count)/\(maxToneSelections) Tone")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                        
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.8))
+                    }
+                    .padding(.leading, 10)
+                    .padding(.vertical, 6)
                 }
-                triggerHaptic(style: .light)
-            }) {
-                HStack(spacing: 3) {  // ✅ Reduced from 4 to 3
-                    Text("\(selectedToneIDs.count)/\(maxToneSelections) Tone")  // ✅ Added "Tone" label
-                        .font(.system(size: 11, weight: .semibold))  // ✅ Reduced from 13 to 11
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                    
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))  // ✅ Reduced from 10 to 9
-                        .foregroundColor(.white.opacity(0.8))
+                
+                Button(action: {
+                    clearTones()
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(.white.opacity(0.85))
+                        .padding(.trailing, 10)
+                        .padding(.vertical, 6)
                 }
-                .padding(.horizontal, 8)  // ✅ Reduced from 12 to 8
-                .padding(.vertical, 4)  // ✅ Reduced from 6 to 4
-                .background(
-                    LinearGradient(
-                        colors: [Color(hex: "8B5CF6"), Color(hex: "7C3AED")],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .cornerRadius(12)  // ✅ Reduced from 16 to 12
             }
+            .background(
+                LinearGradient(
+                    colors: [Color(hex: "8B5CF6"), Color(hex: "7C3AED")],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .cornerRadius(14)
         } else {
             Button(action: {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
@@ -440,18 +584,18 @@ struct SuggestionsView: View {
             }) {
                 HStack(spacing: 3) {  // ✅ Reduced from 4 to 3
                     Text("Tones")
-                        .font(.system(size: 11, weight: .medium))  // ✅ Reduced from 13 to 11
+                        .font(.system(size: 13, weight: .medium))
                         .foregroundColor(.primary)
                         .lineLimit(1)
                     
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))  // ✅ Reduced from 10 to 9
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(.secondary)
                 }
-                .padding(.horizontal, 8)  // ✅ Reduced from 10 to 8
-                .padding(.vertical, 4)  // ✅ Reduced from 6 to 4
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
                 .background(Color.gray.opacity(colorScheme == .dark ? 0.3 : 0.15))
-                .cornerRadius(12)  // ✅ Reduced from 16 to 12
+                .cornerRadius(14)
             }
         }
     }
@@ -459,7 +603,7 @@ struct SuggestionsView: View {
     @ViewBuilder
     private var lengthChip: some View {
         if let length = selectedLengthID {
-            HStack(spacing: 4) {  // ✅ Reduced from 6 to 4
+            HStack(spacing: 6) {
                 Button(action: {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
                         showLengthDropdown.toggle()
@@ -472,21 +616,21 @@ struct SuggestionsView: View {
                     triggerHaptic(style: .light)
                 }) {
                     Text(length.capitalized)
-                        .font(.system(size: 11, weight: .semibold))  // ✅ Reduced from 13 to 11
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(.white)
                         .lineLimit(1)
-                        .padding(.leading, 8)  // ✅ Reduced from 12 to 8
-                        .padding(.vertical, 4)  // ✅ Reduced from 6 to 4
+                        .padding(.leading, 10)
+                        .padding(.vertical, 6)
                 }
                 
                 Button(action: {
                     clearLength()
                 }) {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12))  // ✅ Reduced from 14 to 12
+                        .font(.system(size: 14))
                         .foregroundColor(.white.opacity(0.8))
-                        .padding(.trailing, 8)  // ✅ Reduced from 12 to 8
-                        .padding(.vertical, 4)  // ✅ Reduced from 6 to 4
+                        .padding(.trailing, 10)
+                        .padding(.vertical, 6)
                 }
             }
             .background(
@@ -496,7 +640,7 @@ struct SuggestionsView: View {
                     endPoint: .trailing
                 )
             )
-            .cornerRadius(12)  // ✅ Reduced from 16 to 12
+            .cornerRadius(14)
         } else {
             Button(action: {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
@@ -511,18 +655,18 @@ struct SuggestionsView: View {
             }) {
                 HStack(spacing: 3) {  // ✅ Reduced from 4 to 3
                     Text("Length")
-                        .font(.system(size: 11, weight: .medium))  // ✅ Reduced from 13 to 11
+                        .font(.system(size: 13, weight: .medium))
                         .foregroundColor(.primary)
                         .lineLimit(1)
                     
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))  // ✅ Reduced from 10 to 9
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(.secondary)
                 }
-                .padding(.horizontal, 8)  // ✅ Reduced from 10 to 8
-                .padding(.vertical, 4)  // ✅ Reduced from 6 to 4
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
                 .background(Color.gray.opacity(colorScheme == .dark ? 0.3 : 0.15))
-                .cornerRadius(12)  // ✅ Reduced from 16 to 12
+                .cornerRadius(14)
             }
         }
     }
@@ -758,6 +902,15 @@ struct SuggestionsView: View {
         // Save and regenerate
         saveLengthAndRegenerate()
     }
+
+    private func clearTones() {
+        selectedToneIDs.removeAll()
+        
+        triggerHaptic(style: .light)
+        
+        saveTonesToAppGroup()
+        viewModel.onPreferencesChanged?(Array(selectedToneIDs), selectedLengthID)
+    }
     
     private func regenerateWithCurrentPreferences() {
         // Trigger regeneration with current preferences
@@ -801,4 +954,3 @@ struct BlurView: UIViewRepresentable {
         uiView.effect = UIBlurEffect(style: style)
     }
 }
-

@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum ToolbarButtonType {
-    case upload, reply, rewrite, tone, length, menu, save, clipboard, settings
+    case upload, reply, rewrite, translate, tone, length, menu, save, clipboard, settings
 }
 
 struct WandToolbar: View {
@@ -11,6 +11,7 @@ struct WandToolbar: View {
     let onUploadButtonTap: () -> Void  // ✅ NEW
     let onReplyButtonTap: () -> Void
     let onRewriteButtonTap: () -> Void
+    let onTranslateButtonTap: () -> Void
     let onMenuButtonTap: () -> Void  // ✅ NEW
     let onSaveButtonTap: (() -> Void)?  // ✅ NEW: Optional callback for Save action
     let onClipboardButtonTap: (() -> Void)?  // ✅ NEW: Optional callback for Clipboard action
@@ -26,13 +27,14 @@ struct WandToolbar: View {
     @State private var activeButton: ToolbarButtonType? = nil
     @Environment(\.colorScheme) var colorScheme
     
-    init(onWandTap: @escaping () -> Void, onToneButtonTap: @escaping () -> Void, onLengthButtonTap: @escaping () -> Void, onUploadButtonTap: @escaping () -> Void, onReplyButtonTap: @escaping () -> Void, onRewriteButtonTap: @escaping () -> Void, onMenuButtonTap: @escaping () -> Void, onSaveButtonTap: (() -> Void)? = nil, onClipboardButtonTap: (() -> Void)? = nil, onSettingsButtonTap: (() -> Void)? = nil, autocompleteModel: ToolbarAutocompleteModel, onAutocompleteTap: @escaping (String) -> Void, maxSuggestionsCount: Int, isSuggestionsVisible: @escaping () -> Bool, onCloseSuggestions: (() -> Void)?) {
+    init(onWandTap: @escaping () -> Void, onToneButtonTap: @escaping () -> Void, onLengthButtonTap: @escaping () -> Void, onUploadButtonTap: @escaping () -> Void, onReplyButtonTap: @escaping () -> Void, onRewriteButtonTap: @escaping () -> Void, onTranslateButtonTap: @escaping () -> Void, onMenuButtonTap: @escaping () -> Void, onSaveButtonTap: (() -> Void)? = nil, onClipboardButtonTap: (() -> Void)? = nil, onSettingsButtonTap: (() -> Void)? = nil, autocompleteModel: ToolbarAutocompleteModel, onAutocompleteTap: @escaping (String) -> Void, maxSuggestionsCount: Int, isSuggestionsVisible: @escaping () -> Bool, onCloseSuggestions: (() -> Void)?) {
         self.onWandTap = onWandTap
         self.onToneButtonTap = onToneButtonTap
         self.onLengthButtonTap = onLengthButtonTap
         self.onUploadButtonTap = onUploadButtonTap
         self.onReplyButtonTap = onReplyButtonTap
         self.onRewriteButtonTap = onRewriteButtonTap
+        self.onTranslateButtonTap = onTranslateButtonTap
         self.onMenuButtonTap = onMenuButtonTap
         self.onSaveButtonTap = onSaveButtonTap
         self.onClipboardButtonTap = onClipboardButtonTap
@@ -161,6 +163,7 @@ struct WandToolbar: View {
             ("upload", "photo.on.rectangle", "Upload", .upload, onUploadButtonTap),
             ("reply", "arrowshape.turn.up.left", "Reply", .reply, onReplyButtonTap),
             ("rewrite", "pencil.line", "Rewrite", .rewrite, onRewriteButtonTap),
+            ("translate", "globe", "Translate", .translate, onTranslateButtonTap),
             ("tone", "waveform", "Tone", .tone, onToneButtonTap),
             ("length", "text.alignleft", "Length", .length, onLengthButtonTap),
             // ✅ NEW: Menu buttons (can now appear in toolbar if in positions 1-4)

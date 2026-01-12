@@ -80,6 +80,9 @@ final class KeyboardViewController: KeyboardInputViewController {
     // Menu picker
     private var menuPickerHosting: UIHostingController<MenuPickerView>?
     
+    // Translate picker
+    private var translatePickerHosting: UIHostingController<TranslatePickerView>?
+
     // Clipboard history
     private var clipboardHistoryHosting: UIHostingController<ClipboardHistoryView>?
     
@@ -168,6 +171,7 @@ final class KeyboardViewController: KeyboardInputViewController {
         case tonePicker
         case lengthPicker
         case menuPicker
+        case translatePicker
         case clipboardHistory
     }
     private var lastVisiblePicker: LastVisiblePicker = .none
@@ -720,6 +724,14 @@ final class KeyboardViewController: KeyboardInputViewController {
                 print("✅ Menu picker already visible")
             }
             
+        case .translatePicker:
+            if translatePickerHosting == nil || translatePickerHosting?.view.superview == nil {
+                print("↩️ Restoring translate picker")
+                showTranslatePicker()
+            } else {
+                print("✅ Translate picker already visible")
+            }
+
         case .clipboardHistory:
             if clipboardHistoryHosting == nil || clipboardHistoryHosting?.view.superview == nil {
                 print("↩️ Restoring clipboard history")
@@ -769,6 +781,10 @@ final class KeyboardViewController: KeyboardInputViewController {
         
         suggestionsViewModel.onRetry = { [weak self] in
             self?.retryLastOperation()
+        }
+
+        suggestionsViewModel.onShowTranslatePicker = { [weak self] in
+            self?.showTranslatePicker()
         }
         
         // ✅ NEW: Handle preference changes from suggestions view
@@ -832,6 +848,9 @@ final class KeyboardViewController: KeyboardInputViewController {
                 
             case .photoGeneration(let photos, let context, _, _):
                 self.generateMoreFromPhoto(photos: photos, context: context, tones: toneTitles.isEmpty ? nil : toneTitles, length: lengthID)
+
+            case .translationGeneration(let text, let language):
+                self.generateTranslation(for: text, language: language)
             }
             
             print("✅ Regeneration triggered with new preferences")
@@ -864,6 +883,9 @@ final class KeyboardViewController: KeyboardInputViewController {
         if menuPickerHosting != nil {
             hideMenuPicker()
         }
+        if translatePickerHosting != nil {
+            hideTranslatePicker()
+        }
         if clipboardHistoryHosting != nil {
             hideClipboardHistory()
         }
@@ -874,6 +896,7 @@ final class KeyboardViewController: KeyboardInputViewController {
                tonePickerHosting != nil ||
                lengthPickerHosting != nil ||
                menuPickerHosting != nil ||
+               translatePickerHosting != nil ||
                clipboardHistoryHosting != nil
     }
     
@@ -904,6 +927,9 @@ final class KeyboardViewController: KeyboardInputViewController {
             
         case .rewriteGeneration(let originalText, let tones, let length):
             generateRewrite(of: originalText, tones: tones, length: length)
+
+        case .translationGeneration(let text, let language):
+            generateTranslation(for: text, language: language)
         }
     }
     
@@ -961,6 +987,9 @@ final class KeyboardViewController: KeyboardInputViewController {
             onRewriteButtonTap: { [weak self] in
                 self?.handleRewriteButtonTap()
             },
+            onTranslateButtonTap: { [weak self] in
+                self?.handleTranslateButtonTap()
+            },
             onMenuButtonTap: { [weak self] in
                 self?.handleMenuButtonTap()
             },
@@ -983,6 +1012,7 @@ final class KeyboardViewController: KeyboardInputViewController {
                        (self?.tonePickerHosting != nil) ||
                        (self?.lengthPickerHosting != nil) ||
                        (self?.menuPickerHosting != nil) ||
+                       (self?.translatePickerHosting != nil) ||
                        (self?.clipboardHistoryHosting != nil)
             },
             onCloseSuggestions: { [weak self] in
@@ -997,6 +1027,9 @@ final class KeyboardViewController: KeyboardInputViewController {
                 }
                 if self?.menuPickerHosting != nil {
                     self?.hideMenuPicker()
+                }
+                if self?.translatePickerHosting != nil {
+                    self?.hideTranslatePicker()
                 }
                 if self?.clipboardHistoryHosting != nil {
                     self?.hideClipboardHistory()
@@ -1437,6 +1470,7 @@ final class KeyboardViewController: KeyboardInputViewController {
             // ✅ Clear active states for Reply and Rewrite buttons when suggestions close
             updateToolbarButtonState(.reply, isActive: false)
             updateToolbarButtonState(.rewrite, isActive: false)
+            updateToolbarButtonState(.translate, isActive: false)
         }
         
         hosting.willMove(toParent: nil)
@@ -1768,6 +1802,164 @@ final class KeyboardViewController: KeyboardInputViewController {
         
         print("✅ Length picker hidden (toolbar stays expanded)")
     }
+
+    // MARK: - Translate Picker Management
+
+    private func handleTranslateButtonTap() {
+        print("🌐 Translate button tapped")
+
+        if translatePickerHosting != nil {
+            hideTranslatePicker()
+            updateToolbarButtonState(.translate, isActive: false)
+            print("✅ Translate picker closed (toggle off)")
+            return
+        }
+
+        closeAnyActiveView()
+
+        showTranslatePicker()
+        updateToolbarButtonState(.translate, isActive: true)
+        print("✅ Translate picker opened (direct switch)")
+    }
+
+    private func showTranslatePicker() {
+        guard translatePickerHosting == nil else { return }
+
+        if suggestionsHosting != nil { hideSuggestionsView() }
+        if tonePickerHosting != nil { hideTonePicker() }
+        if lengthPickerHosting != nil { hideLengthPicker() }
+        if menuPickerHosting != nil { hideMenuPicker() }
+        if clipboardHistoryHosting != nil { hideClipboardHistory() }
+
+        let translatePickerView = TranslatePickerView(
+            onSelect: { [weak self] language in
+                self?.applyTranslation(language)
+            },
+            onCancel: { [weak self] in
+                self?.hideTranslatePicker()
+            }
+        )
+
+        let hosting = UIHostingController(rootView: translatePickerView)
+        hosting.view.backgroundColor = UIColor.clear
+        hosting.view.translatesAutoresizingMaskIntoConstraints = false
+
+        addChild(hosting)
+        view.addSubview(hosting.view)
+
+        NSLayoutConstraint.activate([
+            hosting.view.topAnchor.constraint(equalTo: view.topAnchor, constant: 44),
+            hosting.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            hosting.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            hosting.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+
+        hosting.didMove(toParent: self)
+        translatePickerHosting = hosting
+
+        view.bringSubviewToFront(hosting.view)
+        if let toolbar = toolbarHosting {
+            view.bringSubviewToFront(toolbar.view)
+        }
+
+        print("✅ Translate picker shown")
+
+        lastVisiblePicker = .translatePicker
+    }
+
+    private func hideTranslatePicker() {
+        guard let hosting = translatePickerHosting else { return }
+
+        if !isRestoringPicker {
+            lastVisiblePicker = .none
+            updateToolbarButtonState(.translate, isActive: false)
+        }
+
+        hosting.willMove(toParent: nil)
+        hosting.view.removeFromSuperview()
+        hosting.removeFromParent()
+        translatePickerHosting = nil
+
+        print("✅ Translate picker hidden")
+    }
+
+    private func applyTranslation(_ language: TranslateLanguage) {
+        let context = getTextContext()
+        let textToTranslate = context.textToImprove
+
+        guard !textToTranslate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            showStatusBanner(message: "No text to translate")
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.warning)
+            return
+        }
+
+        hideTranslatePicker()
+
+        if suggestionsHosting == nil {
+            showSuggestionsView()
+        }
+
+        updateToolbarButtonState(.translate, isActive: true)
+
+        suggestionsViewModel.lastOperation = .translationGeneration(
+            text: textToTranslate,
+            language: language
+        )
+
+        generateTranslation(for: textToTranslate, language: language)
+    }
+
+    private func generateTranslation(for text: String, language: TranslateLanguage) {
+        let isGenerateMore = !suggestionsViewModel.suggestions.isEmpty
+        let previousOutputs = suggestionsViewModel.suggestions.map { $0.text }
+
+        if isGenerateMore {
+            suggestionsViewModel.state = .loadingMore
+        } else {
+            suggestionsViewModel.state = .loading
+            suggestionsViewModel.suggestions = []
+            suggestionBatchCount = 0
+        }
+
+        Task {
+            do {
+                let alternatives = try await KeyboardAIService.shared.translateText(
+                    text,
+                    to: language,
+                    previousOutputs: previousOutputs
+                )
+
+                await MainActor.run {
+                    let newSuggestions = alternatives.enumerated().map { index, text in
+                        KeyboardSuggestion(
+                            text: text,
+                            index: suggestionBatchCount * 2 + index
+                        )
+                    }
+
+                    if isGenerateMore {
+                        suggestionsViewModel.suggestions.insert(contentsOf: newSuggestions, at: 0)
+                        print("✅ Translation - prepended \(newSuggestions.count) suggestions (total: \(suggestionsViewModel.suggestions.count))")
+                    } else {
+                        suggestionsViewModel.suggestions = newSuggestions
+                        print("✅ Translation - initial \(newSuggestions.count) suggestions")
+                    }
+
+                    suggestionBatchCount += 1
+                    suggestionsViewModel.state = .success(suggestionsViewModel.suggestions)
+
+                    print("✅ Translation generated - \(alternatives.count) alternatives")
+                }
+            } catch {
+                await MainActor.run {
+                    print("❌ Translation failed: \(error)")
+                    let message = (error as? KeyboardAIError)?.errorDescription ?? "Failed to translate"
+                    suggestionsViewModel.state = .error(message)
+                }
+            }
+        }
+    }
     
     private func saveLengthPreference(_ lengthID: String) {
         guard let defaults = UserDefaults(suiteName: SharedConstants.appGroupID) else {
@@ -2048,6 +2240,9 @@ final class KeyboardViewController: KeyboardInputViewController {
             },
             onLength: { [weak self] in
                 self?.handleLengthButtonTap()
+            },
+            onTranslate: { [weak self] in
+                self?.handleTranslateButtonTap()
             }
         )
         

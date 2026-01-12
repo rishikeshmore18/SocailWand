@@ -27,6 +27,7 @@ struct MenuPickerView: View {
     let onRewrite: (() -> Void)?
     let onTone: (() -> Void)?
     let onLength: (() -> Void)?
+    let onTranslate: (() -> Void)?
     
     @State private var showComingSoon: Bool = false
     
@@ -40,6 +41,7 @@ struct MenuPickerView: View {
             "upload": MenuOption(id: "upload", title: "Upload", icon: "photo.on.rectangle", isComingSoon: false),
             "reply": MenuOption(id: "reply", title: "Reply", icon: "arrowshape.turn.up.left", isComingSoon: false),
             "rewrite": MenuOption(id: "rewrite", title: "Rewrite", icon: "pencil.line", isComingSoon: false),
+            "translate": MenuOption(id: "translate", title: "Translate", icon: "globe", isComingSoon: false),
             "tone": MenuOption(id: "tone", title: "Tone", icon: "waveform", isComingSoon: false),
             "length": MenuOption(id: "length", title: "Length", icon: "text.alignleft", isComingSoon: false),
             "save": MenuOption(id: "save", title: "Save to Clipboard", icon: "square.and.arrow.down", isComingSoon: false),
@@ -69,6 +71,7 @@ struct MenuPickerView: View {
         // Default button order: Upload, Reply, Rewrite, Tone (toolbar) | Length, Save, Clipboard, Settings (menu)
         return [
             MenuOption(id: "length", title: "Length", icon: "text.alignleft", isComingSoon: false),
+            MenuOption(id: "translate", title: "Translate", icon: "globe", isComingSoon: false),
             MenuOption(id: "save", title: "Save to Clipboard", icon: "square.and.arrow.down", isComingSoon: false),
             MenuOption(id: "clipboard", title: "Clipboard", icon: "list.clipboard", isComingSoon: false),
             MenuOption(id: "settings", title: "Settings", icon: "gearshape", isComingSoon: false),
@@ -185,6 +188,10 @@ struct MenuPickerView: View {
             triggerHaptic(style: .light)
             onCancel()  // Close menu first
             onLength?()  // Then trigger length action
+        case "translate":
+            triggerHaptic(style: .light)
+            onCancel()
+            onTranslate?()
         default:
             break
         }

@@ -14,6 +14,7 @@ enum LastOperation {
     case photoGeneration(photos: [String], context: String, tones: [String]?, length: String?)
     case replyGeneration(incomingText: String, tones: [String]?, length: String?)
     case rewriteGeneration(originalText: String, tones: [String]?, length: String?)
+    case translationGeneration(text: String, language: TranslateLanguage)
 }
 
 final class SuggestionsViewModel: ObservableObject {
@@ -32,6 +33,7 @@ final class SuggestionsViewModel: ObservableObject {
     var onGenerateMore: (() -> Void)?
     var onShowKeyboard: (() -> Void)?
     var onRetry: (() -> Void)?  // ✅ NEW: Dedicated retry callback
+    var onShowTranslatePicker: (() -> Void)?  // ✅ NEW: Return to language picker
     
     // ✅ NEW: Callback when user changes preferences in suggestions view
     var onPreferencesChanged: (([String], String?) -> Void)?  // (toneIDs, lengthID)
