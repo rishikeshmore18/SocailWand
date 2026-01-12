@@ -8,7 +8,7 @@ import SwiftUI
 struct ButtonOrderView: View {
     @Environment(\.dismiss) private var dismiss
     
-    // All available buttons (Upload, Reply, Rewrite, Translate, Tone, Length)
+    // All available buttons (Upload, Reply, Rewrite, Translate, Email, Tone, Length)
     @State private var buttonOrder: [ToolbarButtonItem] = []
     @State private var toolbarCount: Int = 4
     
@@ -204,6 +204,7 @@ struct ButtonOrderView: View {
             ToolbarButtonItem(id: "reply", label: "Reply", icon: "arrowshape.turn.up.left"),
             ToolbarButtonItem(id: "rewrite", label: "Rewrite", icon: "pencil.line"),
             ToolbarButtonItem(id: "translate", label: "Translate", icon: "globe"),
+            ToolbarButtonItem(id: "email", label: "Email", icon: "envelope"),
             ToolbarButtonItem(id: "tone", label: "Tone", icon: "waveform"),
             ToolbarButtonItem(id: "length", label: "Length", icon: "text.alignleft"),
             // ✅ NEW: Menu buttons (positions 5-7 by default)

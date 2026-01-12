@@ -990,6 +990,9 @@ final class KeyboardViewController: KeyboardInputViewController {
             onTranslateButtonTap: { [weak self] in
                 self?.handleTranslateButtonTap()
             },
+            onEmailButtonTap: { [weak self] in
+                self?.handleEmailButtonTap()
+            },
             onMenuButtonTap: { [weak self] in
                 self?.handleMenuButtonTap()
             },
@@ -2243,6 +2246,9 @@ final class KeyboardViewController: KeyboardInputViewController {
             },
             onTranslate: { [weak self] in
                 self?.handleTranslateButtonTap()
+            },
+            onEmail: { [weak self] in
+                self?.handleEmailButtonTap()
             }
         )
         
@@ -2681,6 +2687,115 @@ final class KeyboardViewController: KeyboardInputViewController {
             banner.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)
         ])
         
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.success)
+    }
+
+    // MARK: - Email Button Handling
+
+    private func handleEmailButtonTap() {
+        print("📧 Email button tapped!")
+
+        closeAnyActiveView()
+        updateToolbarButtonState(.email, isActive: true)
+
+        guard hasFullAccess else {
+            print("⚠️ No Full Access - showing email alert")
+            showEmailFullAccessAlert()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.updateToolbarButtonState(.email, isActive: false)
+            }
+            return
+        }
+
+        guard let defaults = UserDefaults(suiteName: SharedConstants.appGroupID) else {
+            print("❌ Failed to access App Group for email")
+            return
+        }
+
+        defaults.set(true, forKey: "PendingEmailCompose")
+        defaults.set(Date(), forKey: "EmailComposeRequestTime")
+        defaults.synchronize()
+
+        let urlString = "socialwand://email"
+        guard let url = URL(string: urlString) else {
+            print("❌ Invalid URL: \(urlString)")
+            showEmailInstructionBanner()
+            return
+        }
+
+        var responder: UIResponder? = self
+        var didOpen = false
+
+        while let currentResponder = responder {
+            if let application = currentResponder as? UIApplication {
+                application.open(url, options: [:], completionHandler: nil)
+                didOpen = true
+                triggerHaptic(style: .medium)
+                break
+            }
+
+            let openSelector = #selector(UIApplication.open(_:options:completionHandler:))
+            if currentResponder.responds(to: openSelector) {
+                let options: [UIApplication.OpenExternalURLOptionsKey : Any] = [:]
+                let performSelector = NSSelectorFromString("open:options:completionHandler:")
+
+                if let method = class_getInstanceMethod(type(of: currentResponder), performSelector) {
+                    typealias OpenURLFunction = @convention(c) (AnyObject, Selector, URL, [UIApplication.OpenExternalURLOptionsKey : Any], ((Bool) -> Void)?) -> Void
+                    let implementation = method_getImplementation(method)
+                    let function = unsafeBitCast(implementation, to: OpenURLFunction.self)
+                    function(currentResponder, performSelector, url, options, nil)
+                    didOpen = true
+                    triggerHaptic(style: .medium)
+                    break
+                }
+            }
+
+            responder = currentResponder.next
+        }
+
+        if didOpen {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.updateToolbarButtonState(.email, isActive: false)
+            }
+        } else {
+            showEmailInstructionBanner()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.updateToolbarButtonState(.email, isActive: false)
+            }
+        }
+    }
+
+    private func showEmailFullAccessAlert() {
+        let banner = ErrorBannerView(message: "Full Access required for email")
+        banner.translatesAutoresizingMaskIntoConstraints = false
+
+        view.addSubview(banner)
+
+        NSLayoutConstraint.activate([
+            banner.topAnchor.constraint(equalTo: view.topAnchor, constant: 52),
+            banner.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            banner.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            banner.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)
+        ])
+
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.error)
+    }
+
+    private func showEmailInstructionBanner() {
+        let banner = ErrorBannerView(message: "📧 Open Social Wand app to write email", backgroundColor: UIColor.systemPurple.withAlphaComponent(0.9))
+        banner.translatesAutoresizingMaskIntoConstraints = false
+
+        view.addSubview(banner)
+
+        NSLayoutConstraint.activate([
+            banner.topAnchor.constraint(equalTo: view.topAnchor, constant: 52),
+            banner.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            banner.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            banner.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)
+        ])
+
         let generator = UINotificationFeedbackGenerator()
         generator.notificationOccurred(.success)
     }

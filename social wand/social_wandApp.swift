@@ -15,6 +15,8 @@ struct social_wandApp: App {
     @State private var photoUploadSourceApp = "instagram"
     @State private var uploadSessionID = UUID()  // NEW: Forces view recreation
     @State private var showSettings = false  // ✅ NEW: Track settings navigation
+    @State private var showEmailCompose = false
+    @State private var emailSessionID = UUID()
     
     var body: some Scene {
         WindowGroup {
@@ -29,6 +31,7 @@ struct social_wandApp: App {
             }
             .onAppear {
                 checkPendingPhotoUpload()
+                checkPendingEmailCompose()
             }
             .onOpenURL { url in
                 handleURL(url)
@@ -36,6 +39,10 @@ struct social_wandApp: App {
             .fullScreenCover(isPresented: $showPhotoUpload) {
                 PhotoUploadView(sourceApp: photoUploadSourceApp)
                     .id(uploadSessionID)  // Forces new instance on each upload
+            }
+            .fullScreenCover(isPresented: $showEmailCompose) {
+                EmailComposeView()
+                    .id(emailSessionID)
             }
             .sheet(isPresented: $showSettings) {
                 NavigationStack {
@@ -93,6 +100,13 @@ struct social_wandApp: App {
             return
         }
         
+        if url.host == "email" {
+            print("✅ Valid socialwand://email URL")
+            emailSessionID = UUID()
+            showEmailCompose = true
+            return
+        }
+
         // Handle upload URL
         guard url.host == "upload" else {
             print("❌ Invalid URL host: \(url.host ?? "nil")")
@@ -119,5 +133,24 @@ struct social_wandApp: App {
 
         print("🚀 Showing PhotoUploadView")
         showPhotoUpload = true
+    }
+
+    private func checkPendingEmailCompose() {
+        guard let defaults = UserDefaults(suiteName: "group.com.rishimore.socialwand"),
+              defaults.bool(forKey: "PendingEmailCompose") else {
+            return
+        }
+
+        if let requestTime = defaults.object(forKey: "EmailComposeRequestTime") as? Date,
+           Date().timeIntervalSince(requestTime) < 300 {
+            defaults.set(false, forKey: "PendingEmailCompose")
+            defaults.removeObject(forKey: "EmailComposeRequestTime")
+
+            emailSessionID = UUID()
+            showEmailCompose = true
+        } else {
+            defaults.set(false, forKey: "PendingEmailCompose")
+            defaults.removeObject(forKey: "EmailComposeRequestTime")
+        }
     }
 }
