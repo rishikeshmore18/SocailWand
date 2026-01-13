@@ -7,7 +7,16 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		30116A961FB97BC055B00B5B /* MacOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B08DCDF69DFF4A0D0983A00 /* MacOnboardingView.swift */; };
+		56850479DBF90CDE5CF9FD3A /* MacClipboardItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01555863F133F92BC0C692AF /* MacClipboardItem.swift */; };
+		A7C0D4E5F611223344556678 /* MacLocalClipboardItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0D4E5F611223344556677 /* MacLocalClipboardItem.swift */; };
+		6314F6030149334526C7C2DB /* MacAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F94278BB43337EABDFE3287 /* MacAppDelegate.swift */; };
 		723K0K0JPQ3POOE5MSGUQOGU /* Models/SuggestionsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = YBDTVRVHQQ0K1RDS1B7C5HCT /* Models/SuggestionsViewModel.swift */; };
+		A1B2C3D4E5F6001122334467 /* HotKeyConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6001122334466 /* HotKeyConfiguration.swift */; };
+		AAEDB357207D4EF515E89B72 /* HotKeyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17982BD18F10F0647F2C9861 /* HotKeyService.swift */; };
+		AC427FBDF84CA2892B07AEBE /* MacClipboardSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F79074426E8FF4358D8F8332 /* MacClipboardSyncService.swift */; };
+		B7994C623F7096C17D13AE31 /* SocialWandMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F57962C35E7C405B916B2590 /* SocialWandMacApp.swift */; };
+		B89C5BF2391E691CDF482669 /* ClipboardPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 143B768F1EBACDC5D04384D9 /* ClipboardPanelController.swift */; };
 		C300DCEF2ECC5238009BB228 /* KeyboardKit in Frameworks */ = {isa = PBXBuildFile; productRef = C300DCEE2ECC5238009BB228 /* KeyboardKit */; };
 		C300DD4B2ECC5521009BB228 /* KeyboardKit in Frameworks */ = {isa = PBXBuildFile; productRef = C300DD4A2ECC5521009BB228 /* KeyboardKit */; };
 		C31B11DA2EE97939009DF674 /* Views/TonePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = T9NEPICKERVIEWSWIFT002 /* Views/TonePickerView.swift */; };
@@ -29,8 +38,10 @@
 		C4A1B2C3D4E5F60011223345 /* Models/TranslateLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4A1B2C3D4E5F60011223344 /* Models/TranslateLanguage.swift */; };
 		C4CBI7E1A1B2C3D4E5F60011 /* Models/ClipboardItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CBI7E1A1B2C3D4E5F60001 /* Models/ClipboardItem.swift */; };
 		C4CCS7E1A1B2C3D4E5F60012 /* Services/CloudClipboardSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CCS7E1A1B2C3D4E5F60002 /* Services/CloudClipboardSyncService.swift */; };
+		C9C28A80CF4AA4BF852E6F53 /* ClipboardPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73CB1D70C800BA0679DCA255 /* ClipboardPanelView.swift */; };
 		D3WMWV56SMSQ0U373JMDMNNW /* SocialWandKeyboard/Helpers/SoundHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = FGLDOTU788L8NUEMYAJ7BNA7 /* SocialWandKeyboard/Helpers/SoundHelper.swift */; };
 		E9RRORBANNERVIEWSWIFT001 /* Views/ErrorBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9RRORBANNERVIEWSWIFT002 /* Views/ErrorBannerView.swift */; };
+		EA783F9F078E1430FCB4D562 /* MacOnboardingWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 747E60E61EE911F8E23AC765 /* MacOnboardingWindowController.swift */; };
 		F1CKACTIONHANDLERSERV001 /* Services/FlickActionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1CKACTIONHANDLERSERV002 /* Services/FlickActionHandler.swift */; };
 		F1CKGESTURESTATESERV001 /* Services/FlickGestureStateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1CKGESTURESTATESERV002 /* Services/FlickGestureStateStore.swift */; };
 		F1CKKEYBUTTONVIEWS001 /* Views/FlickKeyButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1CKKEYBUTTONVIEWS002 /* Views/FlickKeyButton.swift */; };
@@ -73,7 +84,19 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		01555863F133F92BC0C692AF /* MacClipboardItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacClipboardItem.swift; sourceTree = "<group>"; };
+		A7C0D4E5F611223344556677 /* MacLocalClipboardItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacLocalClipboardItem.swift; sourceTree = "<group>"; };
+		143B768F1EBACDC5D04384D9 /* ClipboardPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardPanelController.swift; sourceTree = "<group>"; };
+		17982BD18F10F0647F2C9861 /* HotKeyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyService.swift; sourceTree = "<group>"; };
+		2D0E374ADDF42FE211D1794C /* SocialWandMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SocialWandMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		52CEF4D6597207EB3AB35B24 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		588L5I7U3LGEZIOTMEJ2RD8U /* Views/SuggestionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/SuggestionsView.swift; sourceTree = "<group>"; };
+		5F94278BB43337EABDFE3287 /* MacAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAppDelegate.swift; sourceTree = "<group>"; };
+		6B08DCDF69DFF4A0D0983A00 /* MacOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacOnboardingView.swift; sourceTree = "<group>"; };
+		73CB1D70C800BA0679DCA255 /* ClipboardPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardPanelView.swift; sourceTree = "<group>"; };
+		747E60E61EE911F8E23AC765 /* MacOnboardingWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacOnboardingWindowController.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6001122334466 /* HotKeyConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyConfiguration.swift; sourceTree = "<group>"; };
+		B0C7F9FD47503BC998ACD43D /* SocialWandMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SocialWandMac.entitlements; sourceTree = "<group>"; };
 		C347D6762F14A316000748E6 /* TranslatePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TranslatePickerView.swift; path = Views/TranslatePickerView.swift; sourceTree = "<group>"; };
 		C3644D9C2EC6F6CE00B63C69 /* SocialWandKeyboard.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SocialWandKeyboard.entitlements; sourceTree = "<group>"; };
 		C39A56082EBD923E00389BE5 /* social wand.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "social wand.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -93,6 +116,8 @@
 		F1CKGESTURESTATESERV002 /* Services/FlickGestureStateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/FlickGestureStateStore.swift; sourceTree = "<group>"; };
 		F1CKKEYBUTTONVIEWS002 /* Views/FlickKeyButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/FlickKeyButton.swift; sourceTree = "<group>"; };
 		F1CKKEYCONTENTVIEWS002 /* Views/FlickKeyContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/FlickKeyContent.swift; sourceTree = "<group>"; };
+		F57962C35E7C405B916B2590 /* SocialWandMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialWandMacApp.swift; sourceTree = "<group>"; };
+		F79074426E8FF4358D8F8332 /* MacClipboardSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacClipboardSyncService.swift; sourceTree = "<group>"; };
 		FGLDOTU788L8NUEMYAJ7BNA7 /* SocialWandKeyboard/Helpers/SoundHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialWandKeyboard/Helpers/SoundHelper.swift; sourceTree = SOURCE_ROOT; };
 		JBBCK1LSYFQYBZU27XCRVZ1E /* Services/KeyboardAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/KeyboardAIService.swift; sourceTree = "<group>"; };
 		L9NEPICKERVIEWSWIFT002 /* Views/LengthPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/LengthPickerView.swift; sourceTree = "<group>"; };
@@ -135,6 +160,13 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		AAC2DBF533097FE07C2A0129 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		C39A56052EBD923E00389BE5 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -160,6 +192,26 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		05066048B2DE9D369787EB75 /* SocialWandMac */ = {
+			isa = PBXGroup;
+			children = (
+				F57962C35E7C405B916B2590 /* SocialWandMacApp.swift */,
+				5F94278BB43337EABDFE3287 /* MacAppDelegate.swift */,
+				143B768F1EBACDC5D04384D9 /* ClipboardPanelController.swift */,
+				73CB1D70C800BA0679DCA255 /* ClipboardPanelView.swift */,
+				17982BD18F10F0647F2C9861 /* HotKeyService.swift */,
+				A1B2C3D4E5F6001122334466 /* HotKeyConfiguration.swift */,
+				01555863F133F92BC0C692AF /* MacClipboardItem.swift */,
+				A7C0D4E5F611223344556677 /* MacLocalClipboardItem.swift */,
+				F79074426E8FF4358D8F8332 /* MacClipboardSyncService.swift */,
+				6B08DCDF69DFF4A0D0983A00 /* MacOnboardingView.swift */,
+				747E60E61EE911F8E23AC765 /* MacOnboardingWindowController.swift */,
+				52CEF4D6597207EB3AB35B24 /* Info.plist */,
+				B0C7F9FD47503BC998ACD43D /* SocialWandMac.entitlements */,
+			);
+			path = SocialWandMac;
+			sourceTree = "<group>";
+		};
 		C300DD492ECC5521009BB228 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
@@ -173,6 +225,7 @@
 				C39A560A2EBD923E00389BE5 /* social wand */,
 				C39A58122F1C0C7B00389BE5 /* Settings.bundle */,
 				C39A58022F1C000100389BE5 /* SocialWandKeyboard */,
+				05066048B2DE9D369787EB75 /* SocialWandMac */,
 				C300DD492ECC5521009BB228 /* Frameworks */,
 				C39A56092EBD923E00389BE5 /* Products */,
 			);
@@ -183,6 +236,7 @@
 			children = (
 				C39A56082EBD923E00389BE5 /* social wand.app */,
 				C39A58012F1C000100389BE5 /* SocialWandKeyboard.appex */,
+				2D0E374ADDF42FE211D1794C /* SocialWandMac.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -224,6 +278,23 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		5868965899106FEBCC136E9A /* SocialWandMac */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2F75157AFDE50036AF86F6E8 /* Build configuration list for PBXNativeTarget "SocialWandMac" */;
+			buildPhases = (
+				92ABC6B575409DA2022D665A /* Sources */,
+				AAC2DBF533097FE07C2A0129 /* Frameworks */,
+				852AEED660962AF496A745DE /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SocialWandMac;
+			productName = SocialWandMac;
+			productReference = 2D0E374ADDF42FE211D1794C /* SocialWandMac.app */;
+			productType = "com.apple.product-type.application";
+		};
 		C39A56072EBD923E00389BE5 /* social wand */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = C39A56132EBD924000389BE5 /* Build configuration list for PBXNativeTarget "social wand" */;
@@ -282,6 +353,9 @@
 				LastSwiftUpdateCheck = 2610;
 				LastUpgradeCheck = 2610;
 				TargetAttributes = {
+					5868965899106FEBCC136E9A = {
+						CreatedOnToolsVersion = 26.1;
+					};
 					C39A56072EBD923E00389BE5 = {
 						CreatedOnToolsVersion = 26.1;
 					};
@@ -315,11 +389,19 @@
 			targets = (
 				C39A56072EBD923E00389BE5 /* social wand */,
 				C39A58062F1C000100389BE5 /* SocialWandKeyboard */,
+				5868965899106FEBCC136E9A /* SocialWandMac */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		852AEED660962AF496A745DE /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		C39A56062EBD923E00389BE5 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -338,6 +420,24 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		92ABC6B575409DA2022D665A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B7994C623F7096C17D13AE31 /* SocialWandMacApp.swift in Sources */,
+				6314F6030149334526C7C2DB /* MacAppDelegate.swift in Sources */,
+				B89C5BF2391E691CDF482669 /* ClipboardPanelController.swift in Sources */,
+				C9C28A80CF4AA4BF852E6F53 /* ClipboardPanelView.swift in Sources */,
+				AAEDB357207D4EF515E89B72 /* HotKeyService.swift in Sources */,
+				A1B2C3D4E5F6001122334467 /* HotKeyConfiguration.swift in Sources */,
+				56850479DBF90CDE5CF9FD3A /* MacClipboardItem.swift in Sources */,
+				A7C0D4E5F611223344556678 /* MacLocalClipboardItem.swift in Sources */,
+				AC427FBDF84CA2892B07AEBE /* MacClipboardSyncService.swift in Sources */,
+				30116A961FB97BC055B00B5B /* MacOnboardingView.swift in Sources */,
+				EA783F9F078E1430FCB4D562 /* MacOnboardingWindowController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		C39A56042EBD923E00389BE5 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -392,6 +492,44 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		3E6ABE8EF2CD5E1E8C7C165A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = SocialWandMac/SocialWandMac.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = ZSNCA283H6;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SocialWandMac/Info.plist;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "rishi-more.social-wand.mac";
+				PRODUCT_NAME = SocialWandMac;
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		B721D0B95C3500D1879C016C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = SocialWandMac/SocialWandMac.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = ZSNCA283H6;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SocialWandMac/Info.plist;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "rishi-more.social-wand.mac";
+				PRODUCT_NAME = SocialWandMac;
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 		C39A56112EBD924000389BE5 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -657,6 +795,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		2F75157AFDE50036AF86F6E8 /* Build configuration list for PBXNativeTarget "SocialWandMac" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3E6ABE8EF2CD5E1E8C7C165A /* Debug */,
+				B721D0B95C3500D1879C016C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		C39A56032EBD923E00389BE5 /* Build configuration list for PBXProject "social wand" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

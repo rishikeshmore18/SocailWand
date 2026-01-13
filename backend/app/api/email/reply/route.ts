@@ -31,13 +31,6 @@ export async function POST(req: NextRequest) {
   try {
     const { incoming, draft, tones, length, previousOutputs } = await req.json();
 
-    if (!draft || typeof draft !== "string" || draft.trim().length === 0) {
-      return NextResponse.json(
-        { error: "Draft reply is required for email reply" },
-        { status: 400 }
-      );
-    }
-
     console.log("[email/reply] model:", MODEL_NAME);
 
     const systemPrompt = `<system_role>
@@ -50,7 +43,7 @@ You are an email reply polishing expert. You refine a user's draft reply to soun
 
 1. TONE + LENGTH (mandatory - always apply to final text)
 
-2. USER DRAFT PRESERVATION (binding - keep intent and key points)
+2. USER DRAFT PRESERVATION (binding when provided)
 
 3. CONTEXT ALIGNMENT (supporting - stay relevant to incoming email)
 
@@ -60,7 +53,7 @@ You are an email reply polishing expert. You refine a user's draft reply to soun
 
 <incoming_email>${incoming || ""}</incoming_email>
 
-<draft_reply>${draft}</draft_reply>
+<draft_reply>${draft || ""}</draft_reply>
 
 <tones>${
       tones && Array.isArray(tones) && tones.length > 0
@@ -99,6 +92,7 @@ STEP 2: POLISH THE DRAFT
 
 - Safe = clear, friendly, professional
 - Bold = confident, direct, still email-appropriate
+ - If <draft_reply> is empty, write a reply from scratch based on the incoming email
 
 STEP 3: APPLY LENGTH CONSTRAINTS
 
@@ -156,7 +150,7 @@ Ensure valid JSON syntax.
         { role: "system", content: systemPrompt },
         {
           role: "user",
-          content: `Polish this email reply draft. Follow tone and length rules strictly.\n\nIncoming email: "${incoming || ""}"\n\nDraft reply: "${draft}"`,
+          content: `Polish this email reply draft. If the draft is empty, write a reply based on the incoming email. Follow tone and length rules strictly.\n\nIncoming email: "${incoming || ""}"\n\nDraft reply: "${draft || ""}"`,
         },
       ],
       max_tokens: 400,

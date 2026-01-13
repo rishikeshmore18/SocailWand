@@ -384,10 +384,6 @@ struct EmailComposeView: View {
                 errorMessage = "Please provide the email you received."
                 return
             }
-            guard let draft = selectedTextOrFull(replyDraft, range: replySelection), !draft.isEmpty else {
-                errorMessage = "Please write the reply you want polished."
-                return
-            }
         }
 
         state = .generating

@@ -3053,10 +3053,72 @@ final class KeyboardViewController: KeyboardInputViewController {
             ) ?? []
         }
 
-        let trimmed = Array(suggestions.prefix(maxAutocompleteSuggestions))
+        let finalSuggestions: [String]
+        if !isWordComplete && suggestions.isEmpty && word.count >= 4 {
+            let misspelledRange = textChecker.rangeOfMisspelledWord(
+                in: word,
+                range: range,
+                startingAt: 0,
+                wrap: false,
+                language: language
+            )
+            if misspelledRange.location != NSNotFound {
+                let guesses = textChecker.guesses(
+                    forWordRange: misspelledRange,
+                    in: word,
+                    language: language
+                ) ?? []
+                let maxDistance = word.count <= 5 ? 1 : 2
+                var filtered: [String] = []
+                for guess in guesses.prefix(6) {
+                    if limitedEditDistance(word, guess, max: maxDistance) <= maxDistance {
+                        filtered.append(guess)
+                    }
+                    if filtered.count >= 3 {
+                        break
+                    }
+                }
+                finalSuggestions = filtered.isEmpty ? suggestions : filtered
+            } else {
+                finalSuggestions = suggestions
+            }
+        } else {
+            finalSuggestions = suggestions
+        }
+
+        let trimmed = Array(finalSuggestions.prefix(maxAutocompleteSuggestions))
         autocompleteCache[cacheKey] = trimmed
         lastAutocompleteWord = cacheKey
         autocompleteModel.suggestions = trimmed
+    }
+
+    private func limitedEditDistance(_ lhs: String, _ rhs: String, max: Int) -> Int {
+        let left = Array(lhs.lowercased())
+        let right = Array(rhs.lowercased())
+        if abs(left.count - right.count) > max {
+            return max + 1
+        }
+
+        var previous = Array(0...right.count)
+        for i in 1...left.count {
+            var current = [i] + Array(repeating: 0, count: right.count)
+            var rowMin = current[0]
+            for j in 1...right.count {
+                let cost = left[i - 1] == right[j - 1] ? 0 : 1
+                let deletion = previous[j] + 1
+                let insertion = current[j - 1] + 1
+                let substitution = previous[j - 1] + cost
+                let value = min(deletion, insertion, substitution)
+                current[j] = value
+                rowMin = min(rowMin, value)
+            }
+            if rowMin > max {
+                return max + 1
+            }
+            previous = current
+        }
+
+        return previous[right.count]
     }
 
     private func extractLastWord(from text: String) -> String {
