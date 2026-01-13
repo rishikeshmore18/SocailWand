@@ -104,12 +104,16 @@ struct ClipboardPanelView: View {
             ScrollView {
                 LazyVStack(spacing: 10) {
                     ForEach(viewModel.clips) { clip in
-                        Button {
+                        ClipRowView(
+                            clip: clip,
+                            onSelect: { onSelect(clip) },
+                            onToggleBookmark: { onToggleBookmark(clip) },
+                            onDelete: { onDelete(clip) }
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture {
                             onSelect(clip)
-                        } label: {
-                            ClipRowView(clip: clip)
                         }
-                        .buttonStyle(PlainButtonStyle())
                         .contextMenu {
                             Button("Apply") {
                                 onSelect(clip)
@@ -126,8 +130,10 @@ struct ClipboardPanelView: View {
                 }
                 .padding(.vertical, 4)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(Color.black.opacity(0.85))
@@ -137,33 +143,65 @@ struct ClipboardPanelView: View {
 
 private struct ClipRowView: View {
     let clip: MacClipboardItem
+    let onSelect: () -> Void
+    let onToggleBookmark: () -> Void
+    let onDelete: () -> Void
+
+    private let highlightColor = Color(red: 0.545, green: 0.361, blue: 0.965)
 
     var body: some View {
-        HStack(spacing: 12) {
-            if let image = clip.displayImage {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 36, height: 36)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            } else {
-                Text(clip.displayText)
-                    .font(.system(size: 14, weight: .medium))
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .foregroundColor(.white)
+        ZStack(alignment: .topTrailing) {
+            HStack(spacing: 12) {
+                if let image = clip.displayImage {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 36, height: 36)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                } else {
+                    Text(clip.displayText)
+                        .font(.system(size: 14, weight: .medium))
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .foregroundColor(.white)
+                }
             }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.white.opacity(0.08))
+            )
 
-            if clip.isBookmarked {
-                Image(systemName: "bookmark.fill")
-                    .foregroundColor(.yellow)
+            HStack(spacing: 6) {
+                Button(action: onToggleBookmark) {
+                    Image(systemName: clip.isBookmarked ? "bookmark.fill" : "bookmark")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(clip.isBookmarked ? highlightColor : .white.opacity(0.7))
+                        .padding(6)
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                Menu {
+                    Button("Apply") {
+                        onSelect()
+                    }
+                    Button(clip.isBookmarked ? "Remove Bookmark" : "Bookmark") {
+                        onToggleBookmark()
+                    }
+                    Divider()
+                    Button("Delete", role: .destructive) {
+                        onDelete()
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.7))
+                        .padding(6)
+                }
+                .menuStyle(BorderlessButtonMenuStyle())
             }
+            .padding(8)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.08))
-        )
     }
 }

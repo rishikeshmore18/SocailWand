@@ -78,6 +78,11 @@ final class MacClipboardSyncService {
             return
         }
 
+        if isDuplicateText(trimmed) {
+            completion?(false)
+            return
+        }
+
         let signature = "text:\(trimmed)"
         if !force, isDuplicateSignature(signature) {
             completion?(false)
@@ -98,7 +103,11 @@ final class MacClipboardSyncService {
             return
         }
 
-        let signature = "image:\(imageData.count):\(hexPrefix(for: imageData, length: 24))"
+        let signature = imageSignature(from: imageData)
+        if isDuplicateImageSignature(signature) {
+            completion?(false)
+            return
+        }
         if !force, isDuplicateSignature(signature) {
             completion?(false)
             return
@@ -150,6 +159,53 @@ final class MacClipboardSyncService {
         return signature == lastSignature
     }
 
+    private func isDuplicateText(_ text: String) -> Bool {
+        loadLocalClips().contains {
+            !$0.isDeleted && $0.type == .text && $0.textContent == text
+        }
+    }
+
+    private func isDuplicateImageSignature(_ signature: String) -> Bool {
+        let clips = loadLocalClips().filter { !$0.isDeleted && $0.type == .image }
+        guard let directory = clipboardDirectory() else { return false }
+
+        for clip in clips {
+            guard let filename = clip.imageFilename else { continue }
+            let url = directory.appendingPathComponent(filename)
+            guard let data = try? Data(contentsOf: url) else { continue }
+            let existingSignature = imageSignature(from: data)
+            if existingSignature == signature {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private func removeDuplicateEntries(for clip: MacLocalClipboardItem, signature: String, in clips: inout [MacLocalClipboardItem]) {
+        switch clip.type {
+        case .text:
+            guard let text = clip.textContent else { return }
+            clips.removeAll { existing in
+                !existing.isDeleted && existing.type == .text && existing.textContent == text
+            }
+        case .image:
+            guard let directory = clipboardDirectory() else { return }
+            clips.removeAll { existing in
+                guard !existing.isDeleted, existing.type == .image, let filename = existing.imageFilename else {
+                    return false
+                }
+                let url = directory.appendingPathComponent(filename)
+                guard let data = try? Data(contentsOf: url) else { return false }
+                return imageSignature(from: data) == signature
+            }
+        }
+    }
+
+    private func imageSignature(from data: Data) -> String {
+        "image:\(data.count):\(hexPrefix(for: data, length: 24))"
+    }
+
     private func clipboardDirectory() -> URL? {
         guard let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             return nil
@@ -196,6 +252,7 @@ final class MacClipboardSyncService {
 
     private func saveLocalClip(_ clip: MacLocalClipboardItem, signature: String) {
         var clips = loadLocalClips()
+        removeDuplicateEntries(for: clip, signature: signature, in: &clips)
         clips.insert(clip, at: 0)
         enforceLimit(clips: &clips)
         saveLocalClips(clips)
