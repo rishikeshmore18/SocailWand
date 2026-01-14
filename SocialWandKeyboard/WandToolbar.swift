@@ -162,7 +162,7 @@ struct WandToolbar: View {
         
         // ALL available buttons (including menu actions)
         let allButtons: [(id: String, icon: String, label: String, type: ToolbarButtonType, action: () -> Void)] = [
-            ("upload", "photo.on.rectangle", "Upload", .upload, onUploadButtonTap),
+            ("upload", "photo.on.rectangle", "Upload Context", .upload, onUploadButtonTap),
             ("reply", "arrowshape.turn.up.left", "Reply", .reply, onReplyButtonTap),
             ("rewrite", "pencil.line", "Rewrite", .rewrite, onRewriteButtonTap),
             ("translate", "globe", "Translate", .translate, onTranslateButtonTap),
@@ -185,7 +185,7 @@ struct WandToolbar: View {
                     onMenuButtonTap()
                 }
             }),
-            ("settings", "gearshape", "Settings", .settings, {
+            ("settings", "gearshape", "", .settings, {
                 if let settingsAction = onSettingsButtonTap {
                     settingsAction()
                 } else {
@@ -201,7 +201,7 @@ struct WandToolbar: View {
             let toolbarCount = min(max(storedCount ?? 4, 0), allButtons.count)
             
             // Take configured number of buttons for toolbar (rest go to menu)
-            let toolbarButtonIDs = Array(savedOrder.prefix(toolbarCount))
+            let toolbarButtonIDs = Array(savedOrder.prefix(toolbarCount)).filter { $0 != "settings" }
             
             // Map IDs to button definitions
             var orderedButtons: [(icon: String, label: String, type: ToolbarButtonType, action: () -> Void)] = []
@@ -222,8 +222,14 @@ struct WandToolbar: View {
                 }
             }
             
-            // Always append Menu button at the end (position 5)
             orderedButtons.append(("chevron.down", "Menu", .menu, onMenuButtonTap))
+            orderedButtons.append(("gearshape", "", .settings, {
+                if let settingsAction = onSettingsButtonTap {
+                    settingsAction()
+                } else {
+                    onMenuButtonTap()
+                }
+            }))
             
             return orderedButtons
         }
@@ -235,6 +241,13 @@ struct WandToolbar: View {
         let defaultToolbarButtons = Array(allButtons.prefix(toolbarCount))
         var buttons = defaultToolbarButtons.map { ($0.icon, $0.label, $0.type, $0.action) }
         buttons.append(("chevron.down", "Menu", .menu, onMenuButtonTap))
+        buttons.append(("gearshape", "", .settings, {
+            if let settingsAction = onSettingsButtonTap {
+                settingsAction()
+            } else {
+                onMenuButtonTap()
+            }
+        }))
         return buttons
     }
     
@@ -351,6 +364,9 @@ struct ToolbarButton: View {
     let action: () -> Void
     @Environment(\.colorScheme) var colorScheme
     @State private var isPressed = false
+    private let buttonHeight: CGFloat = 40
+    private let minButtonWidth: CGFloat = 88
+    private let iconOnlyWidth: CGFloat = 48
     
     var body: some View {
         Button(action: {
@@ -362,11 +378,22 @@ struct ToolbarButton: View {
         }) {
             HStack(spacing: 5) {
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
-                if label == "Save to Clipboard" {
+                    .font(.system(size: label.isEmpty ? 16 : 13, weight: .semibold))
+                if label.isEmpty {
+                    EmptyView()
+                } else if label == "Save to Clipboard" {
                     VStack(alignment: .leading, spacing: 0) {
                         Text("Save to")
                         Text("Clipboard")
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .fixedSize(horizontal: true, vertical: false)
+                    .multilineTextAlignment(.leading)
+                    .layoutPriority(1)
+                } else if label == "Upload Context" {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Upload")
+                        Text("Context")
                     }
                     .font(.system(size: 12, weight: .semibold))
                     .fixedSize(horizontal: true, vertical: false)
@@ -376,11 +403,13 @@ struct ToolbarButton: View {
                     Text(label)
                         .font(.system(size: 14, weight: .medium))
                         .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                 }
             }
             .foregroundColor(textColor)
             .padding(.horizontal, 12)
-            .padding(.vertical, label == "Save to Clipboard" ? 6 : 8)
+            .padding(.vertical, (label == "Save to Clipboard" || label == "Upload Context") ? 6 : 8)
+            .frame(minWidth: label.isEmpty ? iconOnlyWidth : minButtonWidth, minHeight: buttonHeight)
             .background(
                 isActive
                     ? Color(hex: "8B5CF6").opacity(0.2)

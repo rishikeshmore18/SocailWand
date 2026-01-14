@@ -44,15 +44,21 @@ struct ButtonOrderView: View {
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
                             .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                            .moveDisabled(button.id == "settings")
                     }
                 }
                 .onMove { from, to in
                     var updatedRowIDs = rowIDs
                     updatedRowIDs.move(fromOffsets: from, toOffset: to)
+
+                    updatedRowIDs.removeAll { $0 == "settings" }
+                    updatedRowIDs.append("settings")
+
                     toolbarCount = updatedRowIDs.firstIndex(of: dividerRowID) ?? 0
 
                     let lookup = Dictionary(uniqueKeysWithValues: buttonOrder.map { ($0.id, $0) })
-                    buttonOrder = updatedRowIDs.compactMap { lookup[$0] }
+                    let orderedButtons = updatedRowIDs.compactMap { lookup[$0] }
+                    buttonOrder = enforceSettingsLast(orderedButtons)
                     saveButtonOrder()
                 }
             }
@@ -168,11 +174,13 @@ struct ButtonOrderView: View {
             let savedIDs = Set(savedOrder)
             let missingButtons = defaultButtonOrder().filter { !savedIDs.contains($0.id) }
             buttonOrder.append(contentsOf: missingButtons)
+
+            buttonOrder = enforceSettingsLast(buttonOrder)
             
             print("📖 Loaded button order: \(buttonOrder.map { $0.label })")
         } else {
             // No saved order - use default
-            buttonOrder = defaultButtonOrder()
+            buttonOrder = enforceSettingsLast(defaultButtonOrder())
             toolbarCount = min(4, buttonOrder.count)
             saveButtonOrder()  // Save default order
         }
@@ -186,8 +194,13 @@ struct ButtonOrderView: View {
             print("❌ Cannot save button order - no App Group access")
             return
         }
-        
-        let orderIDs = buttonOrder.map { $0.id }
+
+        let sanitizedOrder = enforceSettingsLast(buttonOrder)
+        if sanitizedOrder != buttonOrder {
+            buttonOrder = sanitizedOrder
+        }
+
+        let orderIDs = sanitizedOrder.map { $0.id }
         defaults.set(orderIDs, forKey: "ToolbarButtonOrder")
         defaults.set(toolbarCount, forKey: toolbarCountKey)
         defaults.synchronize()
@@ -200,7 +213,7 @@ struct ButtonOrderView: View {
     
     private func defaultButtonOrder() -> [ToolbarButtonItem] {
         return [
-            ToolbarButtonItem(id: "upload", label: "Upload", icon: "photo.on.rectangle"),
+            ToolbarButtonItem(id: "upload", label: "Upload Context", icon: "photo.on.rectangle"),
             ToolbarButtonItem(id: "reply", label: "Reply", icon: "arrowshape.turn.up.left"),
             ToolbarButtonItem(id: "rewrite", label: "Rewrite", icon: "pencil.line"),
             ToolbarButtonItem(id: "translate", label: "Translate", icon: "globe"),
@@ -212,6 +225,15 @@ struct ButtonOrderView: View {
             ToolbarButtonItem(id: "clipboard", label: "Clipboard", icon: "list.clipboard"),
             ToolbarButtonItem(id: "settings", label: "Settings", icon: "gearshape")
         ]
+    }
+
+    private func enforceSettingsLast(_ order: [ToolbarButtonItem]) -> [ToolbarButtonItem] {
+        var filtered = order.filter { $0.id != "settings" }
+        if let settings = order.first(where: { $0.id == "settings" })
+            ?? defaultButtonOrder().first(where: { $0.id == "settings" }) {
+            filtered.append(settings)
+        }
+        return filtered
     }
 }
 

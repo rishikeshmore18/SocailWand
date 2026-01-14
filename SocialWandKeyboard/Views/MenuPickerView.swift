@@ -36,10 +36,9 @@ struct MenuPickerView: View {
     
     private var menuOptions: [MenuOption] {
         let appGroupID = "group.com.rishimore.socialwand"
-        
-        // All possible menu options (with correct IDs matching button order)
+
         let allOptions: [String: MenuOption] = [
-            "upload": MenuOption(id: "upload", title: "Upload", icon: "photo.on.rectangle", isComingSoon: false),
+            "upload": MenuOption(id: "upload", title: "Upload Context", icon: "photo.on.rectangle", isComingSoon: false),
             "reply": MenuOption(id: "reply", title: "Reply", icon: "arrowshape.turn.up.left", isComingSoon: false),
             "rewrite": MenuOption(id: "rewrite", title: "Rewrite", icon: "pencil.line", isComingSoon: false),
             "translate": MenuOption(id: "translate", title: "Translate", icon: "globe", isComingSoon: false),
@@ -50,36 +49,35 @@ struct MenuPickerView: View {
             "clipboard": MenuOption(id: "clipboard", title: "Clipboard", icon: "list.clipboard", isComingSoon: false),
             "settings": MenuOption(id: "settings", title: "Settings", icon: "gearshape", isComingSoon: false)
         ]
-        
-        // Try to load saved order
+
+        let defaultOrder = [
+            "upload",
+            "reply",
+            "rewrite",
+            "translate",
+            "email",
+            "tone",
+            "length",
+            "save",
+            "clipboard",
+            "settings"
+        ]
+
         if let defaults = UserDefaults(suiteName: appGroupID),
            let savedOrder = defaults.stringArray(forKey: "ToolbarButtonOrder") {
             let storedCount = defaults.object(forKey: "ToolbarButtonCount") as? Int
             let toolbarCount = min(max(storedCount ?? 4, 0), savedOrder.count)
-            
-            // Menu shows buttons after toolbarCount
-            let menuButtonIDs = Array(savedOrder.dropFirst(toolbarCount))
-            
-            // Map IDs to menu options
-            var options: [MenuOption] = menuButtonIDs.compactMap { allOptions[$0] }
-            
-            // Always add "Coming Soon" at the end
-            options.append(MenuOption(id: "comingSoon", title: "Coming Soon", icon: "sparkles", isComingSoon: true))
-            
-            return options
+
+            let menuIDs = Array(savedOrder.dropFirst(toolbarCount)).filter { $0 != "settings" }
+            let menuOptions = menuIDs.compactMap { allOptions[$0] }
+
+            if !menuOptions.isEmpty {
+                return menuOptions
+            }
         }
-        
-        // No saved order - show default menu buttons (Length, Save, Clipboard, Settings)
-        // Default button order: Upload, Reply, Rewrite, Tone (toolbar) | Length, Save, Clipboard, Settings (menu)
-        return [
-            MenuOption(id: "length", title: "Length", icon: "text.alignleft", isComingSoon: false),
-            MenuOption(id: "translate", title: "Translate", icon: "globe", isComingSoon: false),
-            MenuOption(id: "email", title: "Email", icon: "envelope", isComingSoon: false),
-            MenuOption(id: "save", title: "Save to Clipboard", icon: "square.and.arrow.down", isComingSoon: false),
-            MenuOption(id: "clipboard", title: "Clipboard", icon: "list.clipboard", isComingSoon: false),
-            MenuOption(id: "settings", title: "Settings", icon: "gearshape", isComingSoon: false),
-            MenuOption(id: "comingSoon", title: "Coming Soon", icon: "sparkles", isComingSoon: true)
-        ]
+
+        let fallbackIDs = Array(defaultOrder.dropFirst(4)).filter { $0 != "settings" }
+        return fallbackIDs.compactMap { allOptions[$0] }
     }
     
     var body: some View {
@@ -94,7 +92,12 @@ struct MenuPickerView: View {
                     header(metrics: metrics)
                     
                     ScrollView {
-                        VStack(spacing: metrics.cardSpacing) {
+                        let columns = Array(
+                            repeating: GridItem(.flexible(), spacing: metrics.cardSpacing),
+                            count: 3
+                        )
+
+                        LazyVGrid(columns: columns, spacing: metrics.cardSpacing) {
                             ForEach(menuOptions) { option in
                                 MenuCard(
                                     option: option,
@@ -253,23 +256,19 @@ private struct MenuCard: View {
     
     var body: some View {
         Button(action: action) {
-            ZStack {
-                HStack(spacing: 12) {
-                    Spacer()
-                    
-                    Image(systemName: option.icon)
-                        .font(.system(size: metrics.iconFont))
-                        .foregroundColor(.primary)
-                    
-                    Text(option.title)
-                        .font(.system(size: metrics.titleFont, weight: .semibold))
-                        .foregroundColor(.primary)
-                    
-                    Spacer()
-                }
+            VStack(spacing: metrics.iconTitleSpacing) {
+                Image(systemName: option.icon)
+                    .font(.system(size: metrics.iconFont))
+                    .foregroundColor(.primary)
+
+                Text(option.title)
+                    .font(.system(size: metrics.titleFont, weight: .semibold))
+                    .foregroundColor(.primary)
+                    .multilineTextAlignment(.center)
             }
-            .padding(.horizontal, metrics.horizontalPadding)
+            .frame(maxWidth: .infinity, minHeight: metrics.cardHeight)
             .padding(.vertical, metrics.verticalPadding)
+            .padding(.horizontal, metrics.cardInnerPadding)
             .background(cardBackground)
             .overlay(cardBorder)
             .clipShape(RoundedRectangle(cornerRadius: metrics.cornerRadius, style: .continuous))
@@ -310,6 +309,7 @@ private enum KeyboardBreakpoint {
 
 private struct MenuCardMetrics {
     let horizontalPadding: CGFloat
+    let cardInnerPadding: CGFloat
     let verticalPadding: CGFloat
     let cardSpacing: CGFloat
     let titleFont: CGFloat
@@ -318,44 +318,55 @@ private struct MenuCardMetrics {
     let headerFont: CGFloat
     let cornerRadius: CGFloat
     let contentTopPadding: CGFloat
+    let cardHeight: CGFloat
+    let iconTitleSpacing: CGFloat
     
     static func metrics(for breakpoint: KeyboardBreakpoint) -> MenuCardMetrics {
         switch breakpoint {
         case .small:
             return MenuCardMetrics(
                 horizontalPadding: 16,
-                verticalPadding: 12,
+                cardInnerPadding: 10,
+                verticalPadding: 10,
                 cardSpacing: 10,
-                titleFont: 16,
+                titleFont: 15,
                 subtitleFont: 13,
-                iconFont: 20,
+                iconFont: 18,
                 headerFont: 18,
                 cornerRadius: 16,
-                contentTopPadding: 8
+                contentTopPadding: 8,
+                cardHeight: 64,
+                iconTitleSpacing: 6
             )
         case .medium:
             return MenuCardMetrics(
                 horizontalPadding: 18,
-                verticalPadding: 14,
+                cardInnerPadding: 12,
+                verticalPadding: 12,
                 cardSpacing: 12,
-                titleFont: 17,
+                titleFont: 16,
                 subtitleFont: 14,
-                iconFont: 22,
+                iconFont: 20,
                 headerFont: 20,
                 cornerRadius: 18,
-                contentTopPadding: 12
+                contentTopPadding: 12,
+                cardHeight: 72,
+                iconTitleSpacing: 8
             )
         case .large:
             return MenuCardMetrics(
                 horizontalPadding: 20,
-                verticalPadding: 16,
+                cardInnerPadding: 14,
+                verticalPadding: 14,
                 cardSpacing: 14,
-                titleFont: 18,
+                titleFont: 17,
                 subtitleFont: 15,
-                iconFont: 24,
+                iconFont: 22,
                 headerFont: 22,
                 cornerRadius: 20,
-                contentTopPadding: 16
+                contentTopPadding: 16,
+                cardHeight: 80,
+                iconTitleSpacing: 10
             )
         }
     }
