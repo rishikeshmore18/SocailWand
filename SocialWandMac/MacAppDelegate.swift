@@ -1,4 +1,5 @@
 import AppKit
+import CloudKit
 
 final class MacAppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
@@ -48,6 +49,7 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
             self?.panelController.toggle()
         }
         configureClipboardMonitor()
+        configureCloudKitSync()
     }
 
     private func showOnboarding() {
@@ -74,6 +76,11 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
         } else {
             clipboardMonitor.stop()
         }
+    }
+
+    private func configureCloudKitSync() {
+        NSApplication.shared.registerForRemoteNotifications()
+        MacClipboardSyncService.shared.registerCloudKitSubscription()
     }
 }
 
@@ -102,9 +109,15 @@ private final class MacClipboardMonitor {
         guard pasteboard.changeCount != lastChangeCount else { return }
         lastChangeCount = pasteboard.changeCount
 
-        MacClipboardSyncService.shared.saveFromPasteboard { success in
-            guard success else { return }
-            NotificationCenter.default.post(name: MacClipboardSyncService.didUpdateNotification, object: nil)
+        MacClipboardSyncService.shared.saveFromPasteboard()
+    }
+}
+
+extension MacAppDelegate {
+    func application(_ application: NSApplication, didReceiveRemoteNotification userInfo: [String : Any]) {
+        guard let notification = CKNotification(fromRemoteNotificationDictionary: userInfo) else { return }
+        if notification.notificationType == .query {
+            MacClipboardSyncService.shared.handleRemoteNotification()
         }
     }
 }

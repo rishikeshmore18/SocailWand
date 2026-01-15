@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		30116A961FB97BC055B00B5B /* MacOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B08DCDF69DFF4A0D0983A00 /* MacOnboardingView.swift */; };
+		MACCLIPBOARDITEM00000002 /* ClipboardItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = MACCLIPBOARDITEM00000001 /* ClipboardItem.swift */; };
 		56850479DBF90CDE5CF9FD3A /* MacClipboardItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01555863F133F92BC0C692AF /* MacClipboardItem.swift */; };
 		A7C0D4E5F611223344556678 /* MacLocalClipboardItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0D4E5F611223344556677 /* MacLocalClipboardItem.swift */; };
 		6314F6030149334526C7C2DB /* MacAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F94278BB43337EABDFE3287 /* MacAppDelegate.swift */; };
@@ -86,6 +87,7 @@
 /* Begin PBXFileReference section */
 		01555863F133F92BC0C692AF /* MacClipboardItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacClipboardItem.swift; sourceTree = "<group>"; };
 		A7C0D4E5F611223344556677 /* MacLocalClipboardItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacLocalClipboardItem.swift; sourceTree = "<group>"; };
+		MACCLIPBOARDITEM00000001 /* ClipboardItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardItem.swift; sourceTree = "<group>"; };
 		143B768F1EBACDC5D04384D9 /* ClipboardPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardPanelController.swift; sourceTree = "<group>"; };
 		17982BD18F10F0647F2C9861 /* HotKeyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyService.swift; sourceTree = "<group>"; };
 		2D0E374ADDF42FE211D1794C /* SocialWandMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SocialWandMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -201,6 +203,7 @@
 				73CB1D70C800BA0679DCA255 /* ClipboardPanelView.swift */,
 				17982BD18F10F0647F2C9861 /* HotKeyService.swift */,
 				A1B2C3D4E5F6001122334466 /* HotKeyConfiguration.swift */,
+				MACCLIPBOARDITEM00000001 /* ClipboardItem.swift */,
 				01555863F133F92BC0C692AF /* MacClipboardItem.swift */,
 				A7C0D4E5F611223344556677 /* MacLocalClipboardItem.swift */,
 				F79074426E8FF4358D8F8332 /* MacClipboardSyncService.swift */,
@@ -430,6 +433,7 @@
 				C9C28A80CF4AA4BF852E6F53 /* ClipboardPanelView.swift in Sources */,
 				AAEDB357207D4EF515E89B72 /* HotKeyService.swift in Sources */,
 				A1B2C3D4E5F6001122334467 /* HotKeyConfiguration.swift in Sources */,
+				MACCLIPBOARDITEM00000002 /* ClipboardItem.swift in Sources */,
 				56850479DBF90CDE5CF9FD3A /* MacClipboardItem.swift in Sources */,
 				A7C0D4E5F611223344556678 /* MacLocalClipboardItem.swift in Sources */,
 				AC427FBDF84CA2892B07AEBE /* MacClipboardSyncService.swift in Sources */,

@@ -66,11 +66,9 @@ final class ClipboardPanelController {
             },
             onDelete: { [weak self] clip in
                 MacClipboardSyncService.shared.deleteClip(id: clip.id)
-                self?.viewModel.refresh()
             },
             onToggleBookmark: { [weak self] clip in
                 MacClipboardSyncService.shared.toggleBookmark(id: clip.id)
-                self?.viewModel.refresh()
             },
             showSaveButton: !autoSaveEnabled,
             onSave: { [weak self] in
@@ -107,11 +105,7 @@ final class ClipboardPanelController {
     }
 
     private func handleSave() {
-        MacClipboardSyncService.shared.saveFromPasteboard(force: true) { [weak self] success in
-            if success {
-                self?.viewModel.refresh()
-            }
-        }
+        MacClipboardSyncService.shared.saveFromPasteboard(force: true)
     }
 
     private func paste(_ clip: MacClipboardItem) {

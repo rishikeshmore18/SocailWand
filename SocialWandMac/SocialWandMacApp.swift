@@ -144,19 +144,13 @@ private struct MacClipboardOverlay: View {
                     onSelect: onSelect,
                     onDelete: { clip in
                         MacClipboardSyncService.shared.deleteClip(id: clip.id)
-                        viewModel.refresh()
                     },
                     onToggleBookmark: { clip in
                         MacClipboardSyncService.shared.toggleBookmark(id: clip.id)
-                        viewModel.refresh()
                     },
                     showSaveButton: !autoSaveClipboard,
                     onSave: {
-                        MacClipboardSyncService.shared.saveFromPasteboard(force: true) { success in
-                            if success {
-                                viewModel.refresh()
-                            }
-                        }
+                        MacClipboardSyncService.shared.saveFromPasteboard(force: true)
                     }
                 )
             }

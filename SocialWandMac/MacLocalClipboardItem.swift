@@ -1,5 +1,7 @@
 import Foundation
 
+// DEPRECATED: This model is kept only for migration purposes
+// New code should use the unified ClipboardItem model
 struct MacLocalClipboardItem: Codable, Identifiable {
     enum ClipType: String, Codable {
         case text

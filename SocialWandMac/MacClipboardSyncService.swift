@@ -5,15 +5,35 @@ import Foundation
 final class MacClipboardSyncService {
     static let shared = MacClipboardSyncService()
     static let autoSaveClipboardKey = "macAutoSaveClipboard"
-    static let lastSavedSignatureKey = "macLastSavedClipboardSignature"
     static let didUpdateNotification = Notification.Name("MacClipboardDidUpdate")
+    static let cloudStatusDidChangeNotification = Notification.Name("MacClipboardCloudStatusDidChange")
+    static let subscriptionID = "clipboard-item-changes"
 
+    // UNIFIED: Use same App Group as iOS
+    private let appGroupID = "group.com.rishimore.socialwand"
+    
+    // UNIFIED: Use same storage key as iOS
+    private let clipboardKey = "SavedClipboardItems"
+    
+    // UNIFIED: Use same pending keys as iOS
+    private let pendingUpsertsKey = "CloudClipboardPendingUpserts"
+    private let pendingDeletesKey = "CloudClipboardPendingDeletes"
+    private let migrationFlagKey = "MacToUnifiedStorageMigrated"
+    
     private let container = CKContainer(identifier: "iCloud.rishi-more.social-wand")
     private let recordType = "ClipboardItem"
-    private let localClipboardKey = "MacSavedClipboardItems"
     private let maxTotalItems = 7
 
-    private init() {}
+    private let fetchStateQueue = DispatchQueue(label: "mac.clipboard.fetch.state")
+    private var fetchInFlight = false
+    private var lastFetchAt: Date?
+    private let fetchMinimumInterval: TimeInterval = 3
+
+    private init() {
+        performMigrationIfNeeded()
+    }
+
+    // MARK: - Public API
 
     func fetchClips(completion: @escaping ([MacClipboardItem]) -> Void) {
         let localClips = loadLocalClips()
@@ -22,10 +42,13 @@ final class MacClipboardSyncService {
             completion(localDisplay)
         }
 
+        pushPendingChanges()
+
         fetchRemoteClips { [weak self] remoteClips in
             guard let self else { return }
-            let merged = self.mergeRemoteClips(remoteClips)
+            let merged = self.mergeRemoteClips(remoteClips, notify: false)
             let display = self.displayItems(from: merged)
+            guard display != localDisplay else { return }
             DispatchQueue.main.async {
                 completion(display)
             }
@@ -34,6 +57,8 @@ final class MacClipboardSyncService {
 
     func saveFromPasteboard(force: Bool = false, completion: ((Bool) -> Void)? = nil) {
         let pasteboard = NSPasteboard.general
+        let typeList = pasteboard.types?.map { $0.rawValue } ?? []
+        print("📋 Mac Pasteboard types: \(typeList)")
 
         if let images = pasteboard.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage],
            let image = images.first {
@@ -43,6 +68,12 @@ final class MacClipboardSyncService {
 
         if let imageData = pasteboard.data(forType: .tiff) ?? pasteboard.data(forType: .png),
            let image = NSImage(data: imageData) {
+            saveImageClip(image, force: force, completion: completion)
+            return
+        }
+
+        if let jpegData = pasteboard.data(forType: NSPasteboard.PasteboardType("public.jpeg")),
+           let image = NSImage(data: jpegData) {
             saveImageClip(image, force: force, completion: completion)
             return
         }
@@ -68,10 +99,90 @@ final class MacClipboardSyncService {
             return
         }
 
+        if let htmlData = pasteboard.data(forType: .html),
+           let attributed = try? NSAttributedString(
+            data: htmlData,
+            options: [.documentType: NSAttributedString.DocumentType.html],
+            documentAttributes: nil
+           ) {
+            let plainText = attributed.string
+            if !plainText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                saveTextClip(plainText, force: force, completion: completion)
+                return
+            }
+        }
+
+        if let rtfData = pasteboard.data(forType: .rtf),
+           let attributed = NSAttributedString(rtf: rtfData, documentAttributes: nil) {
+            let plainText = attributed.string
+            if !plainText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                saveTextClip(plainText, force: force, completion: completion)
+                return
+            }
+        }
+
         completion?(false)
     }
 
-    private func saveTextClip(_ text: String, force: Bool, completion: ((Bool) -> Void)?) {
+    func toggleBookmark(id: String) {
+        var clips = loadLocalClips()
+        guard let index = clips.firstIndex(where: { $0.id == id }) else { return }
+        clips[index].isBookmarked.toggle()
+        clips[index].markModified()
+        enqueuePendingUpsert(clips[index].id)
+        saveLocalClips(clips)
+        NotificationCenter.default.post(name: Self.didUpdateNotification, object: nil)
+        syncToCloud(clips[index])
+    }
+
+    func deleteClip(id: String) {
+        var clips = loadLocalClips()
+        guard let index = clips.firstIndex(where: { $0.id == id }) else { return }
+        clips[index].isDeleted = true
+        clips[index].markModified()
+        enqueuePendingUpsert(clips[index].id)
+        deleteLocalFiles(clip: clips[index])
+        saveLocalClips(clips)
+        NotificationCenter.default.post(name: Self.didUpdateNotification, object: nil)
+        syncToCloud(clips[index])
+    }
+
+    func registerCloudKitSubscription() {
+        checkCloudAvailability { [weak self] available in
+            guard let self, available else { return }
+            let database = self.container.privateCloudDatabase
+            database.fetch(withSubscriptionID: Self.subscriptionID) { existing, _ in
+                guard existing == nil else { return }
+
+                let subscription = CKQuerySubscription(
+                    recordType: self.recordType,
+                    predicate: NSPredicate(value: true),
+                    subscriptionID: Self.subscriptionID,
+                    options: [.firesOnRecordCreation, .firesOnRecordUpdate, .firesOnRecordDeletion]
+                )
+                let info = CKSubscription.NotificationInfo()
+                info.shouldSendContentAvailable = true
+                subscription.notificationInfo = info
+
+                database.save(subscription) { _, error in
+                    if let error {
+                        self.logCloudKitError(error, context: "subscription")
+                    }
+                }
+            }
+        }
+    }
+
+    func handleRemoteNotification() {
+        fetchRemoteClips { [weak self] remoteClips in
+            guard let self else { return }
+            _ = self.mergeRemoteClips(remoteClips, notify: true)
+        }
+    }
+
+    // MARK: - Private Helpers
+
+    private func saveTextClip(_ text: String, force _: Bool, completion: ((Bool) -> Void)?) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             completion?(false)
@@ -83,32 +194,16 @@ final class MacClipboardSyncService {
             return
         }
 
-        let signature = "text:\(trimmed)"
-        if !force, isDuplicateSignature(signature) {
-            completion?(false)
-            return
-        }
-
-        let clip = MacLocalClipboardItem(text: trimmed)
-        saveLocalClip(clip, signature: signature)
+        let clip = ClipboardItem(text: trimmed)
+        saveLocalClip(clip)
         syncToCloud(clip)
         DispatchQueue.main.async {
             completion?(true)
         }
     }
 
-    private func saveImageClip(_ image: NSImage, force: Bool, completion: ((Bool) -> Void)?) {
+    private func saveImageClip(_ image: NSImage, force _: Bool, completion: ((Bool) -> Void)?) {
         guard let imageData = pngData(for: image) else {
-            completion?(false)
-            return
-        }
-
-        let signature = imageSignature(from: imageData)
-        if isDuplicateImageSignature(signature) {
-            completion?(false)
-            return
-        }
-        if !force, isDuplicateSignature(signature) {
             completion?(false)
             return
         }
@@ -136,27 +231,21 @@ final class MacClipboardSyncService {
             try? thumbData.write(to: thumbURL)
         }
 
-        let clip = MacLocalClipboardItem(
-            id: id,
-            type: .image,
-            timestamp: Date(),
-            modifiedAt: nil,
-            isBookmarked: false,
-            isDeleted: false,
-            textContent: nil,
-            imageFilename: imageFilename,
-            thumbnailFilename: thumbFilename
-        )
-        saveLocalClip(clip, signature: signature)
+        let clip = ClipboardItem(imageFilename: imageFilename, thumbnailFilename: thumbFilename)
+        saveLocalClip(clip)
         syncToCloud(clip)
         DispatchQueue.main.async {
             completion?(true)
         }
     }
 
-    private func isDuplicateSignature(_ signature: String) -> Bool {
-        let lastSignature = UserDefaults.standard.string(forKey: Self.lastSavedSignatureKey)
-        return signature == lastSignature
+    private func saveLocalClip(_ clip: ClipboardItem) {
+        var clips = loadLocalClips()
+        clips.insert(clip, at: 0)
+        enforceLimit(clips: &clips)
+        saveLocalClips(clips)
+        enqueuePendingUpsert(clip.id)
+        NotificationCenter.default.post(name: Self.didUpdateNotification, object: nil)
     }
 
     private func isDuplicateText(_ text: String) -> Bool {
@@ -165,120 +254,39 @@ final class MacClipboardSyncService {
         }
     }
 
-    private func isDuplicateImageSignature(_ signature: String) -> Bool {
-        let clips = loadLocalClips().filter { !$0.isDeleted && $0.type == .image }
-        guard let directory = clipboardDirectory() else { return false }
+    // MARK: - Storage (UNIFIED with iOS)
 
-        for clip in clips {
-            guard let filename = clip.imageFilename else { continue }
-            let url = directory.appendingPathComponent(filename)
-            guard let data = try? Data(contentsOf: url) else { continue }
-            let existingSignature = imageSignature(from: data)
-            if existingSignature == signature {
-                return true
-            }
-        }
-
-        return false
-    }
-
-    private func removeDuplicateEntries(for clip: MacLocalClipboardItem, signature: String, in clips: inout [MacLocalClipboardItem]) {
-        switch clip.type {
-        case .text:
-            guard let text = clip.textContent else { return }
-            clips.removeAll { existing in
-                !existing.isDeleted && existing.type == .text && existing.textContent == text
-            }
-        case .image:
-            guard let directory = clipboardDirectory() else { return }
-            clips.removeAll { existing in
-                guard !existing.isDeleted, existing.type == .image, let filename = existing.imageFilename else {
-                    return false
-                }
-                let url = directory.appendingPathComponent(filename)
-                guard let data = try? Data(contentsOf: url) else { return false }
-                return imageSignature(from: data) == signature
-            }
-        }
-    }
-
-    private func imageSignature(from data: Data) -> String {
-        "image:\(data.count):\(hexPrefix(for: data, length: 24))"
-    }
-
-    private func clipboardDirectory() -> URL? {
-        guard let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            return nil
-        }
-        let directory = base
-            .appendingPathComponent("SocialWandMac", isDirectory: true)
-            .appendingPathComponent("clipboard", isDirectory: true)
-        if !FileManager.default.fileExists(atPath: directory.path) {
-            do {
-                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            } catch {
-                return nil
-            }
-        }
-        return directory
-    }
-
-    private func pngData(for image: NSImage) -> Data? {
-        guard let tiff = image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiff) else {
-            return nil
-        }
-        return bitmap.representation(using: .png, properties: [:])
-    }
-
-    private func resizedImage(_ image: NSImage, targetSize: CGSize) -> NSImage {
-        let size = image.size
-        let widthRatio = targetSize.width / size.width
-        let heightRatio = targetSize.height / size.height
-        let scale = min(widthRatio, heightRatio)
-
-        let newSize = CGSize(width: size.width * scale, height: size.height * scale)
-        let newImage = NSImage(size: newSize)
-        newImage.lockFocus()
-        image.draw(in: NSRect(origin: .zero, size: newSize), from: .zero, operation: .copy, fraction: 1.0)
-        newImage.unlockFocus()
-        return newImage
-    }
-
-    private func hexPrefix(for data: Data, length: Int) -> String {
-        let prefix = data.prefix(length)
-        return prefix.map { String(format: "%02x", $0) }.joined()
-    }
-
-    private func saveLocalClip(_ clip: MacLocalClipboardItem, signature: String) {
-        var clips = loadLocalClips()
-        removeDuplicateEntries(for: clip, signature: signature, in: &clips)
-        clips.insert(clip, at: 0)
-        enforceLimit(clips: &clips)
-        saveLocalClips(clips)
-        UserDefaults.standard.set(signature, forKey: Self.lastSavedSignatureKey)
-        NotificationCenter.default.post(name: Self.didUpdateNotification, object: nil)
-    }
-
-    private func loadLocalClips() -> [MacLocalClipboardItem] {
-        guard let data = UserDefaults.standard.data(forKey: localClipboardKey) else {
+    private func loadLocalClips() -> [ClipboardItem] {
+        guard let defaults = UserDefaults(suiteName: appGroupID),
+              let data = defaults.data(forKey: clipboardKey) else {
             return []
         }
-        return (try? JSONDecoder().decode([MacLocalClipboardItem].self, from: data)) ?? []
+
+        guard let clips = try? JSONDecoder().decode([ClipboardItem].self, from: data) else {
+            return []
+        }
+
+        return clips
     }
 
-    private func saveLocalClips(_ clips: [MacLocalClipboardItem]) {
-        guard let data = try? JSONEncoder().encode(clips) else { return }
-        UserDefaults.standard.set(data, forKey: localClipboardKey)
+    private func saveLocalClips(_ clips: [ClipboardItem]) {
+        guard let defaults = UserDefaults(suiteName: appGroupID),
+              let data = try? JSONEncoder().encode(clips) else {
+            return
+        }
+
+        defaults.set(data, forKey: clipboardKey)
     }
 
-    private func displayItems(from clips: [MacLocalClipboardItem]) -> [MacClipboardItem] {
+    // MARK: - Display Conversion
+
+    private func displayItems(from clips: [ClipboardItem]) -> [MacClipboardItem] {
         let filtered = clips.filter { !$0.isDeleted }
         let sorted = filtered.sorted { lhs, rhs in
             if lhs.isBookmarked != rhs.isBookmarked {
                 return lhs.isBookmarked && !rhs.isBookmarked
             }
-            return lhs.modifiedAt > rhs.modifiedAt
+            return lhs.timestamp > rhs.timestamp
         }
 
         let directory = clipboardDirectory()
@@ -299,44 +307,86 @@ final class MacClipboardSyncService {
         }
     }
 
-    private func fetchRemoteClips(completion: @escaping ([MacLocalClipboardItem]) -> Void) {
-        checkCloudAvailability { [weak self] available in
-            guard let self else { return }
-            guard available else {
+    // MARK: - CloudKit Sync
+
+    private func fetchRemoteClips(completion: @escaping ([ClipboardItem]) -> Void) {
+        fetchStateQueue.async { [weak self] in
+            guard let self = self else { return }
+
+            if self.fetchInFlight {
                 completion([])
                 return
             }
 
-            let query = CKQuery(recordType: self.recordType, predicate: NSPredicate(value: true))
-            query.sortDescriptors = [NSSortDescriptor(key: "modifiedAt", ascending: false)]
+            if let lastFetchAt = self.lastFetchAt,
+               Date().timeIntervalSince(lastFetchAt) < self.fetchMinimumInterval {
+                completion([])
+                return
+            }
 
-            let database = self.container.privateCloudDatabase
-            database.fetch(withQuery: query, inZoneWith: nil, desiredKeys: nil, resultsLimit: CKQueryOperation.maximumResults) { result in
-                switch result {
-                case .failure(let error):
-                    self.logCloudKitError(error, context: "fetch")
+            self.fetchInFlight = true
+            self.lastFetchAt = Date()
+
+            self.checkCloudAvailability { [weak self] available in
+                guard let self else {
                     completion([])
-                case .success(let response):
-                    let clips = response.matchResults.compactMap { _, recordResult -> MacLocalClipboardItem? in
-                        switch recordResult {
-                        case .success(let record):
-                            return self.localItem(from: record)
-                        case .failure(let error):
-                            self.logCloudKitError(error, context: "fetch record")
-                            return nil
-                        }
+                    return
+                }
+                
+                defer {
+                    self.fetchStateQueue.async {
+                        self.fetchInFlight = false
                     }
-                    completion(clips)
+                }
+
+                guard available else {
+                    completion([])
+                    return
+                }
+
+                let query = CKQuery(
+                    recordType: self.recordType,
+                    predicate: NSPredicate(format: "modifiedAt >= %@", Date.distantPast as NSDate)
+                )
+                query.sortDescriptors = [NSSortDescriptor(key: "modifiedAt", ascending: false)]
+
+                let database = self.container.privateCloudDatabase
+                database.fetch(withQuery: query, inZoneWith: nil, desiredKeys: nil, resultsLimit: CKQueryOperation.maximumResults) { result in
+                    switch result {
+                    case .failure(let error):
+                        self.logCloudKitError(error, context: "fetch")
+                        completion([])
+                    case .success(let response):
+                        let clips = response.matchResults.compactMap { _, recordResult -> ClipboardItem? in
+                            switch recordResult {
+                            case .success(let record):
+                                return self.clip(from: record)
+                            case .failure(let error):
+                                self.logCloudKitError(error, context: "fetch record")
+                                return nil
+                            }
+                        }
+                        completion(clips)
+                    }
                 }
             }
         }
     }
 
-    private func mergeRemoteClips(_ remoteClips: [MacLocalClipboardItem]) -> [MacLocalClipboardItem] {
-        var merged = Dictionary(uniqueKeysWithValues: loadLocalClips().map { ($0.id, $0) })
+    private func mergeRemoteClips(
+        _ remoteClips: [ClipboardItem],
+        notify: Bool = true
+    ) -> [ClipboardItem] {
+        let existingClips = loadLocalClips()
+        let existingHash = clipsHash(existingClips)
+        var merged = Dictionary(uniqueKeysWithValues: existingClips.map { ($0.id, $0) })
+        let pendingUpserts = Set(loadPendingUpserts())
 
         for remote in remoteClips {
             if let existing = merged[remote.id] {
+                if pendingUpserts.contains(remote.id), existing.modifiedAt > remote.modifiedAt {
+                    continue
+                }
                 if remote.modifiedAt >= existing.modifiedAt {
                     merged[remote.id] = remote
                 }
@@ -346,70 +396,38 @@ final class MacClipboardSyncService {
         }
 
         var mergedClips = Array(merged.values)
-        enforceLimit(clips: &mergedClips)
+        
+        // Remove local files for deleted items
+        for clip in mergedClips where clip.isDeleted && clip.type == .image {
+            deleteLocalFiles(clip: clip)
+        }
+        
+        let newlyDeleted = enforceLimit(clips: &mergedClips)
+        if !newlyDeleted.isEmpty {
+            newlyDeleted.forEach { enqueuePendingUpsert($0.id) }
+            pushPendingChanges()
+        }
+        
         saveLocalClips(mergedClips)
-        NotificationCenter.default.post(name: Self.didUpdateNotification, object: nil)
+        let mergedHash = clipsHash(mergedClips)
+        if notify, mergedHash != existingHash {
+            NotificationCenter.default.post(name: Self.didUpdateNotification, object: nil)
+        }
         return mergedClips
     }
 
-    func toggleBookmark(id: String) {
-        var clips = loadLocalClips()
-        guard let index = clips.firstIndex(where: { $0.id == id }) else { return }
-        clips[index].isBookmarked.toggle()
-        clips[index].markModified()
-        saveLocalClips(clips)
-        NotificationCenter.default.post(name: Self.didUpdateNotification, object: nil)
-        syncToCloud(clips[index])
-    }
-
-    func deleteClip(id: String) {
-        var clips = loadLocalClips()
-        guard let index = clips.firstIndex(where: { $0.id == id }) else { return }
-        clips[index].isDeleted = true
-        clips[index].markModified()
-        deleteLocalFiles(clip: clips[index])
-        saveLocalClips(clips)
-        NotificationCenter.default.post(name: Self.didUpdateNotification, object: nil)
-        syncToCloud(clips[index])
-    }
-
-    private func enforceLimit(clips: inout [MacLocalClipboardItem]) {
-        let active = clips.filter { !$0.isDeleted }
-        let bookmarked = active.filter { $0.isBookmarked }
-        let regular = active.filter { !$0.isBookmarked }
-        let allowedRegular = max(0, maxTotalItems - bookmarked.count)
-
-        if regular.count > allowedRegular {
-            let overflow = regular.suffix(regular.count - allowedRegular)
-            for clip in overflow {
-                if let index = clips.firstIndex(where: { $0.id == clip.id }) {
-                    clips[index].isDeleted = true
-                    clips[index].markModified()
-                    deleteLocalFiles(clip: clips[index])
-                }
+    private func syncToCloud(_ clip: ClipboardItem) {
+        checkCloudAvailability { [weak self] available in
+            guard let self, available else { return }
+            guard let record = self.record(for: clip) else { return }
+            self.saveRecord(record) { [weak self] success in
+                guard success else { return }
+                self?.removePendingUpserts([clip.id])
             }
         }
     }
 
-    private func deleteLocalFiles(clip: MacLocalClipboardItem) {
-        guard let directory = clipboardDirectory() else { return }
-        if let filename = clip.imageFilename {
-            try? FileManager.default.removeItem(at: directory.appendingPathComponent(filename))
-        }
-        if let filename = clip.thumbnailFilename {
-            try? FileManager.default.removeItem(at: directory.appendingPathComponent(filename))
-        }
-    }
-
-    private func syncToCloud(_ clip: MacLocalClipboardItem) {
-        checkCloudAvailability { [weak self] available in
-            guard let self, available else { return }
-            guard let record = self.record(for: clip) else { return }
-            self.saveRecord(record)
-        }
-    }
-
-    private func record(for clip: MacLocalClipboardItem) -> CKRecord? {
+    private func record(for clip: ClipboardItem) -> CKRecord? {
         let recordID = CKRecord.ID(recordName: clip.id)
         let record = CKRecord(recordType: recordType, recordID: recordID)
         record["type"] = clip.type.rawValue as CKRecordValue
@@ -417,6 +435,10 @@ final class MacClipboardSyncService {
         record["isDeleted"] = clip.isDeleted as CKRecordValue
         record["timestamp"] = clip.timestamp as CKRecordValue
         record["modifiedAt"] = clip.modifiedAt as CKRecordValue
+
+        if clip.isDeleted {
+            return record
+        }
 
         switch clip.type {
         case .text:
@@ -443,9 +465,9 @@ final class MacClipboardSyncService {
         return record
     }
 
-    private func localItem(from record: CKRecord) -> MacLocalClipboardItem? {
-        guard let typeRaw = record["type"] as? String,
-              let type = MacLocalClipboardItem.ClipType(rawValue: typeRaw) else {
+    private func clip(from record: CKRecord) -> ClipboardItem? {
+        guard let typeString = record["type"] as? String,
+              let type = ClipboardItem.ClipboardItemType(rawValue: typeString) else {
             return nil
         }
 
@@ -454,39 +476,154 @@ final class MacClipboardSyncService {
         let modifiedAt = record["modifiedAt"] as? Date ?? record.modificationDate ?? timestamp
         let isBookmarked = record["isBookmarked"] as? Bool ?? false
         let isDeleted = record["isDeleted"] as? Bool ?? false
-        let text = record["text"] as? String
 
-        var imageFilename = record["imageFilename"] as? String
-        var thumbnailFilename = record["thumbnailFilename"] as? String
-
-        if type == .image {
-            if imageFilename == nil {
-                imageFilename = "image_\(id).png"
+        switch type {
+        case .text:
+            let text = record["text"] as? String ?? ""
+            return ClipboardItem(
+                id: id,
+                type: .text,
+                timestamp: timestamp,
+                modifiedAt: modifiedAt,
+                isBookmarked: isBookmarked,
+                isDeleted: isDeleted,
+                textContent: text,
+                imageFilename: nil,
+                thumbnailFilename: nil
+            )
+        case .image:
+            let imageFilename = record["imageFilename"] as? String ?? "image_\(id).png"
+            let thumbnailFilename = record["thumbnailFilename"] as? String ?? "thumb_\(id).png"
+            
+            if !isDeleted {
+                if let asset = record["imageAsset"] as? CKAsset {
+                    _ = persistAsset(asset, filename: imageFilename)
+                }
+                if let asset = record["thumbnailAsset"] as? CKAsset {
+                    _ = persistAsset(asset, filename: thumbnailFilename)
+                }
             }
-            if thumbnailFilename == nil {
-                thumbnailFilename = "thumb_\(id).png"
+            
+            return ClipboardItem(
+                id: id,
+                type: .image,
+                timestamp: timestamp,
+                modifiedAt: modifiedAt,
+                isBookmarked: isBookmarked,
+                isDeleted: isDeleted,
+                textContent: nil,
+                imageFilename: imageFilename,
+                thumbnailFilename: thumbnailFilename
+            )
+        }
+    }
+
+    private func saveRecord(_ record: CKRecord, completion: ((Bool) -> Void)? = nil) {
+        let database = container.privateCloudDatabase
+        let operation = CKModifyRecordsOperation(recordsToSave: [record], recordIDsToDelete: nil)
+        operation.savePolicy = .changedKeys
+        operation.modifyRecordsResultBlock = { [weak self] result in
+            switch result {
+            case .success:
+                completion?(true)
+            case .failure(let error):
+                self?.logCloudKitError(error, context: "save")
+                completion?(false)
+            }
+        }
+        database.add(operation)
+    }
+
+    private func pushPendingChanges() {
+        let pendingDeletes = Set(loadPendingDeletes())
+        let pendingUpserts = Set(loadPendingUpserts()).subtracting(pendingDeletes)
+
+        guard !pendingDeletes.isEmpty || !pendingUpserts.isEmpty else { return }
+
+        checkCloudAvailability { [weak self] available in
+            guard let self, available else { return }
+
+            let database = self.container.privateCloudDatabase
+            let group = DispatchGroup()
+            let lockQueue = DispatchQueue(label: "mac.clipboard.pending.lock")
+            var successfulDeletes: [String] = []
+            var successfulUpserts: [String] = []
+
+            for id in pendingDeletes {
+                group.enter()
+                database.delete(withRecordID: CKRecord.ID(recordName: id)) { _, error in
+                    if error == nil {
+                        lockQueue.async {
+                            successfulDeletes.append(id)
+                            group.leave()
+                        }
+                    } else {
+                        if let error {
+                            self.logCloudKitError(error, context: "delete \(id)")
+                        }
+                        group.leave()
+                    }
+                }
             }
 
-            if let asset = record["imageAsset"] as? CKAsset, let filename = imageFilename {
-                _ = persistAsset(asset, filename: filename)
-            }
+            group.notify(queue: .global(qos: .utility)) {
+                if !successfulDeletes.isEmpty {
+                    self.removePendingDeletes(successfulDeletes)
+                }
 
-            if let asset = record["thumbnailAsset"] as? CKAsset, let filename = thumbnailFilename {
-                _ = persistAsset(asset, filename: filename)
+                let localClips = self.loadLocalClips()
+                let localByID = Dictionary(uniqueKeysWithValues: localClips.map { ($0.id, $0) })
+                let recordsToSave: [CKRecord] = pendingUpserts.compactMap { id in
+                    guard let clip = localByID[id] else { return nil }
+                    return self.record(for: clip)
+                }
+
+                guard !recordsToSave.isEmpty else { return }
+
+                let operation = CKModifyRecordsOperation(recordsToSave: recordsToSave, recordIDsToDelete: nil)
+                operation.savePolicy = .changedKeys
+                operation.perRecordSaveBlock = { recordID, result in
+                    switch result {
+                    case .success:
+                        lockQueue.async {
+                            successfulUpserts.append(recordID.recordName)
+                        }
+                    case .failure(let error):
+                        self.logCloudKitError(error, context: "save \(recordID.recordName)")
+                    }
+                }
+                operation.modifyRecordsResultBlock = { _ in
+                    if !successfulUpserts.isEmpty {
+                        self.removePendingUpserts(successfulUpserts)
+                    }
+                }
+                database.add(operation)
+            }
+        }
+    }
+
+    // MARK: - File Management (UNIFIED with iOS)
+
+    private func clipboardDirectory() -> URL? {
+        // UNIFIED: Use App Group container like iOS
+        guard let containerURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: appGroupID
+        ) else {
+            print("⚠️ Mac: Failed to get App Group container")
+            return nil
+        }
+
+        let clipboardDir = containerURL.appendingPathComponent("clipboard", isDirectory: true)
+        if !FileManager.default.fileExists(atPath: clipboardDir.path) {
+            do {
+                try FileManager.default.createDirectory(at: clipboardDir, withIntermediateDirectories: true)
+            } catch {
+                print("⚠️ Mac: Failed to create clipboard directory: \(error)")
+                return nil
             }
         }
 
-        return MacLocalClipboardItem(
-            id: id,
-            type: type,
-            timestamp: timestamp,
-            modifiedAt: modifiedAt,
-            isBookmarked: isBookmarked,
-            isDeleted: isDeleted,
-            textContent: text,
-            imageFilename: imageFilename,
-            thumbnailFilename: thumbnailFilename
-        )
+        return clipboardDir
     }
 
     private func persistAsset(_ asset: CKAsset, filename: String) -> Bool {
@@ -506,16 +643,107 @@ final class MacClipboardSyncService {
         }
     }
 
-    private func saveRecord(_ record: CKRecord) {
-        let database = container.privateCloudDatabase
-        let operation = CKModifyRecordsOperation(recordsToSave: [record], recordIDsToDelete: nil)
-        operation.savePolicy = .changedKeys
-        operation.modifyRecordsResultBlock = { [weak self] result in
-            if case .failure(let error) = result {
-                self?.logCloudKitError(error, context: "save")
+    private func deleteLocalFiles(clip: ClipboardItem) {
+        guard let directory = clipboardDirectory() else { return }
+        if let filename = clip.imageFilename {
+            try? FileManager.default.removeItem(at: directory.appendingPathComponent(filename))
+        }
+        if let filename = clip.thumbnailFilename {
+            try? FileManager.default.removeItem(at: directory.appendingPathComponent(filename))
+        }
+    }
+
+    private func enforceLimit(clips: inout [ClipboardItem]) -> [ClipboardItem] {
+        let active = clips.filter { !$0.isDeleted }
+        let bookmarked = active.filter { $0.isBookmarked }
+        let regular = active.filter { !$0.isBookmarked }.sorted { $0.timestamp > $1.timestamp }
+        let allowedRegular = max(0, maxTotalItems - bookmarked.count)
+
+        var deletedClips: [ClipboardItem] = []
+        if regular.count > allowedRegular {
+            let overflow = regular.suffix(regular.count - allowedRegular)
+            for clip in overflow {
+                if let index = clips.firstIndex(where: { $0.id == clip.id }) {
+                    if clips[index].type == .image {
+                        deleteLocalFiles(clip: clips[index])
+                    }
+                    clips[index].isDeleted = true
+                    clips[index].markModified()
+                    deletedClips.append(clips[index])
+                }
             }
         }
-        database.add(operation)
+        return deletedClips
+    }
+
+    // MARK: - Pending Queue (UNIFIED with iOS)
+
+    private func enqueuePendingUpsert(_ id: String) {
+        var pending = Set(loadPendingUpserts())
+        pending.insert(id)
+        savePendingUpserts(Array(pending))
+    }
+
+    private func removePendingUpserts(_ ids: [String]) {
+        var pending = Set(loadPendingUpserts())
+        pending.subtract(ids)
+        savePendingUpserts(Array(pending))
+    }
+
+    private func loadPendingUpserts() -> [String] {
+        guard let defaults = UserDefaults(suiteName: appGroupID) else { return [] }
+        return defaults.stringArray(forKey: pendingUpsertsKey) ?? []
+    }
+
+    private func savePendingUpserts(_ ids: [String]) {
+        guard let defaults = UserDefaults(suiteName: appGroupID) else { return }
+        defaults.set(ids, forKey: pendingUpsertsKey)
+    }
+
+    private func enqueuePendingDelete(_ id: String) {
+        var pending = Set(loadPendingDeletes())
+        pending.insert(id)
+        savePendingDeletes(Array(pending))
+    }
+
+    private func removePendingDeletes(_ ids: [String]) {
+        var pending = Set(loadPendingDeletes())
+        pending.subtract(ids)
+        savePendingDeletes(Array(pending))
+    }
+
+    private func loadPendingDeletes() -> [String] {
+        guard let defaults = UserDefaults(suiteName: appGroupID) else { return [] }
+        return defaults.stringArray(forKey: pendingDeletesKey) ?? []
+    }
+
+    private func savePendingDeletes(_ ids: [String]) {
+        guard let defaults = UserDefaults(suiteName: appGroupID) else { return }
+        defaults.set(ids, forKey: pendingDeletesKey)
+    }
+
+    // MARK: - Utilities
+
+    private func pngData(for image: NSImage) -> Data? {
+        guard let tiff = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff) else {
+            return nil
+        }
+        return bitmap.representation(using: .png, properties: [:])
+    }
+
+    private func resizedImage(_ image: NSImage, targetSize: CGSize) -> NSImage {
+        let size = image.size
+        let widthRatio = targetSize.width / size.width
+        let heightRatio = targetSize.height / size.height
+        let scale = min(widthRatio, heightRatio)
+
+        let newSize = CGSize(width: size.width * scale, height: size.height * scale)
+        let newImage = NSImage(size: newSize)
+        newImage.lockFocus()
+        image.draw(in: NSRect(origin: .zero, size: newSize), from: .zero, operation: .copy, fraction: 1.0)
+        newImage.unlockFocus()
+        return newImage
     }
 
     private func checkCloudAvailability(completion: @escaping (Bool) -> Void) {
@@ -523,7 +751,13 @@ final class MacClipboardSyncService {
             if let error {
                 self.logCloudKitError(error, context: "account status")
             }
-            completion(status == .available)
+            let available = status == .available
+            if available {
+                self.updateCloudStatus(message: nil)
+            } else {
+                self.updateCloudStatus(message: "CloudKit unavailable. Showing local clipboard.")
+            }
+            completion(available)
         }
     }
 
@@ -532,6 +766,110 @@ final class MacClipboardSyncService {
             print("MacClipboardSync \(context) failed: \(ckError.code.rawValue) \(ckError.localizedDescription)")
         } else {
             print("MacClipboardSync \(context) failed: \(error.localizedDescription)")
+        }
+        updateCloudStatus(message: "CloudKit error. Showing local clipboard.")
+    }
+
+    private func updateCloudStatus(message: String?) {
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: Self.cloudStatusDidChangeNotification,
+                object: nil,
+                userInfo: ["message": message as Any]
+            )
+        }
+    }
+
+    private func clipsHash(_ clips: [ClipboardItem]) -> Int {
+        let joined = clips.map {
+            "\($0.id)|\($0.modifiedAt.timeIntervalSince1970)|\($0.isBookmarked)|\($0.isDeleted)|\($0.textContent ?? "")|\($0.imageFilename ?? "")|\($0.thumbnailFilename ?? "")"
+        }.joined(separator: "||")
+        return joined.hashValue
+    }
+
+    // MARK: - Migration
+
+    private func performMigrationIfNeeded() {
+        guard let defaults = UserDefaults(suiteName: appGroupID),
+              !defaults.bool(forKey: migrationFlagKey) else {
+            return
+        }
+
+        print("🔄 Mac: Starting migration to unified storage...")
+
+        // Try to load old Mac clipboard items from standard UserDefaults
+        let oldKey = "MacSavedClipboardItems"
+        if let oldData = UserDefaults.standard.data(forKey: oldKey),
+           let oldClips = try? JSONDecoder().decode([MacLocalClipboardItem].self, from: oldData) {
+            
+            print("📦 Mac: Found \(oldClips.count) items in old storage")
+            
+            // Convert MacLocalClipboardItem to ClipboardItem
+            let convertedClips: [ClipboardItem] = oldClips.map { old in
+                ClipboardItem(
+                    id: old.id,
+                    type: old.type == .text ? .text : .image,
+                    timestamp: old.timestamp,
+                    modifiedAt: old.modifiedAt,
+                    isBookmarked: old.isBookmarked,
+                    isDeleted: old.isDeleted,
+                    textContent: old.textContent,
+                    imageFilename: old.imageFilename,
+                    thumbnailFilename: old.thumbnailFilename
+                )
+            }
+            
+            // Migrate files from Application Support to App Group
+            migrateFilesToAppGroup(clips: convertedClips)
+            
+            // Save to new unified storage
+            saveLocalClips(convertedClips)
+            
+            // Mark all as pending upserts to sync to cloud
+            convertedClips.forEach { enqueuePendingUpsert($0.id) }
+            
+            print("✅ Mac: Migration complete. Migrated \(convertedClips.count) items")
+        } else {
+            print("ℹ️ Mac: No old items to migrate")
+        }
+
+        // Mark migration as complete
+        defaults.set(true, forKey: migrationFlagKey)
+    }
+
+    private func migrateFilesToAppGroup(clips: [ClipboardItem]) {
+        // Old path: Application Support/SocialWandMac/clipboard
+        guard let oldBase = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return
+        }
+        let oldDirectory = oldBase
+            .appendingPathComponent("SocialWandMac", isDirectory: true)
+            .appendingPathComponent("clipboard", isDirectory: true)
+        
+        guard FileManager.default.fileExists(atPath: oldDirectory.path),
+              let newDirectory = clipboardDirectory() else {
+            return
+        }
+        
+        print("📁 Mac: Migrating files from \(oldDirectory.path) to \(newDirectory.path)")
+        
+        for clip in clips where clip.type == .image {
+            if let imageFilename = clip.imageFilename {
+                let oldURL = oldDirectory.appendingPathComponent(imageFilename)
+                let newURL = newDirectory.appendingPathComponent(imageFilename)
+                if FileManager.default.fileExists(atPath: oldURL.path) {
+                    try? FileManager.default.copyItem(at: oldURL, to: newURL)
+                    print("  ✓ Migrated: \(imageFilename)")
+                }
+            }
+            if let thumbFilename = clip.thumbnailFilename {
+                let oldURL = oldDirectory.appendingPathComponent(thumbFilename)
+                let newURL = newDirectory.appendingPathComponent(thumbFilename)
+                if FileManager.default.fileExists(atPath: oldURL.path) {
+                    try? FileManager.default.copyItem(at: oldURL, to: newURL)
+                    print("  ✓ Migrated: \(thumbFilename)")
+                }
+            }
         }
     }
 }

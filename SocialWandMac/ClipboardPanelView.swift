@@ -2,12 +2,19 @@ import SwiftUI
 
 final class ClipboardPanelViewModel: ObservableObject {
     @Published var clips: [MacClipboardItem] = []
+    @Published var cloudStatusMessage: String?
 
     init() {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleClipboardUpdate),
             name: MacClipboardSyncService.didUpdateNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleCloudStatusUpdate(_:)),
+            name: MacClipboardSyncService.cloudStatusDidChangeNotification,
             object: nil
         )
     }
@@ -18,16 +25,29 @@ final class ClipboardPanelViewModel: ObservableObject {
             name: MacClipboardSyncService.didUpdateNotification,
             object: nil
         )
+        NotificationCenter.default.removeObserver(
+            self,
+            name: MacClipboardSyncService.cloudStatusDidChangeNotification,
+            object: nil
+        )
     }
 
     func refresh() {
         MacClipboardSyncService.shared.fetchClips { [weak self] clips in
-            self?.clips = clips
+            guard let self else { return }
+            if self.clips != clips {
+                self.clips = clips
+            }
         }
     }
 
     @objc private func handleClipboardUpdate() {
         refresh()
+    }
+
+    @objc private func handleCloudStatusUpdate(_ notification: Notification) {
+        let message = notification.userInfo?["message"] as? String
+        cloudStatusMessage = message
     }
 }
 
@@ -99,6 +119,18 @@ struct ClipboardPanelView: View {
                     )
                 }
                 .buttonStyle(PlainButtonStyle())
+            }
+
+            if let message = viewModel.cloudStatusMessage, !message.isEmpty {
+                Text(message)
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.7))
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.white.opacity(0.08))
+                    )
             }
 
             ScrollView {
