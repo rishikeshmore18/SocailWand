@@ -4,6 +4,7 @@
 //
 
 import CloudKit
+import CryptoKit
 import Foundation
 import UIKit
 
@@ -283,6 +284,7 @@ final class CloudClipboardSyncService {
         record["timestamp"] = clip.timestamp as CKRecordValue
         record["modifiedAt"] = clip.modifiedAt as CKRecordValue
         record["isDeleted"] = clip.isDeleted as CKRecordValue
+        record["contentSignature"] = clip.contentSignature as CKRecordValue
 
         if clip.isDeleted {
             return record
@@ -332,10 +334,12 @@ final class CloudClipboardSyncService {
         let isDeleted = record["isDeleted"] as? Bool ?? false
         let timestamp = record["timestamp"] as? Date ?? Date()
         let modifiedAt = record["modifiedAt"] as? Date ?? record.modificationDate ?? timestamp
+        let storedSignature = record["contentSignature"] as? String ?? ""
 
         switch type {
         case .text:
             let text = record["text"] as? String ?? ""
+            let signature = storedSignature.isEmpty ? signatureForText(text) : storedSignature
             return ClipboardItem(
                 id: id,
                 type: .text,
@@ -343,6 +347,7 @@ final class CloudClipboardSyncService {
                 modifiedAt: modifiedAt,
                 isBookmarked: isBookmarked,
                 isDeleted: isDeleted,
+                contentSignature: signature,
                 textContent: text,
                 imageFilename: nil,
                 thumbnailFilename: nil
@@ -350,6 +355,7 @@ final class CloudClipboardSyncService {
         case .image:
             let imageFilename = record["imageFilename"] as? String ?? "image_\(id).png"
             let thumbnailFilename = record["thumbnailFilename"] as? String ?? "thumb_\(id).png"
+            let signature = storedSignature.isEmpty ? legacyImageSignature(imageFilename) : storedSignature
             if !isDeleted {
                 if let imageAsset = record["imageAsset"] as? CKAsset {
                     _ = persistAsset(imageAsset, filename: imageFilename)
@@ -365,6 +371,7 @@ final class CloudClipboardSyncService {
                 modifiedAt: modifiedAt,
                 isBookmarked: isBookmarked,
                 isDeleted: isDeleted,
+                contentSignature: signature,
                 textContent: nil,
                 imageFilename: imageFilename,
                 thumbnailFilename: thumbnailFilename
@@ -558,6 +565,16 @@ final class CloudClipboardSyncService {
         }
     }
 
+    private func signatureForText(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hash = SHA256.hash(data: Data(trimmed.utf8))
+        return "text:\(hash.hexString)"
+    }
+
+    private func legacyImageSignature(_ filename: String) -> String {
+        "image:legacy:\(filename)"
+    }
+
     // MARK: - Open Access
 
     private func isOpenAccessEnabled() -> Bool {
@@ -571,5 +588,11 @@ final class CloudClipboardSyncService {
         } else {
             print("CloudClipboardSync \(context) failed: \(error.localizedDescription)")
         }
+    }
+}
+
+private extension SHA256.Digest {
+    var hexString: String {
+        map { String(format: "%02x", $0) }.joined()
     }
 }

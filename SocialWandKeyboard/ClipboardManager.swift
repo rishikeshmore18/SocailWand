@@ -4,6 +4,8 @@
 //
 
 import Foundation
+import CryptoKit
+import CoreImage
 import ImageIO
 import UIKit
 import UniformTypeIdentifiers
@@ -17,7 +19,9 @@ class ClipboardManager {
     private let clipboardKey = "SavedClipboardItems"
     private let maxTotalItems = 7  // Reduced from 15
     
-    private init() {}
+    private init() {
+        migrateMissingSignaturesIfNeeded()
+    }
     
     // MARK: - File Paths
     
@@ -61,14 +65,14 @@ class ClipboardManager {
     
     private func saveText(_ text: String) -> ClipboardItem? {
         var allClips = retrieveAllClips()
-        
-        // Check for duplicates
-        if allClips.contains(where: { $0.type == .text && $0.textContent == text && !$0.isDeleted }) {
+
+        let signature = signatureForText(text)
+        if isDuplicateSignature(signature, in: allClips) {
             print("⚠️ Text already saved")
             return nil
         }
-        
-        let newClip = ClipboardItem(text: text)
+
+        let newClip = ClipboardItem(text: text, contentSignature: signature)
         allClips.insert(newClip, at: 0)
         let deletedClips = enforceLimit(clips: &allClips)
         let saved = saveClips(allClips)
@@ -86,6 +90,17 @@ class ClipboardManager {
         
         let uuid = UUID().uuidString
         let normalized = normalizedImage(image)
+        var allClips = retrieveAllClips()
+
+        guard let signature = signatureForImage(normalized) else {
+            print("❌ Failed to generate image signature")
+            return nil
+        }
+
+        if isDuplicateSignature(signature, in: allClips) {
+            print("⚠️ Image already saved")
+            return nil
+        }
         
         // 1. Save full-size image (compressed, visually lossless)
         guard let fullEncoded = encodeImage(normalized, preferHEIC: true, quality: 0.9) else {
@@ -123,8 +138,11 @@ class ClipboardManager {
         }
         
         // 3. Save metadata only
-        var allClips = retrieveAllClips()
-        let newClip = ClipboardItem(imageFilename: fullFilename, thumbnailFilename: thumbFilename)
+        let newClip = ClipboardItem(
+            imageFilename: fullFilename,
+            thumbnailFilename: thumbFilename,
+            contentSignature: signature
+        )
         allClips.insert(newClip, at: 0)
         let deletedClips = enforceLimit(clips: &allClips)
         let saved = saveClips(allClips)
@@ -156,9 +174,13 @@ class ClipboardManager {
             return []
         }
         
-        guard let clips = try? JSONDecoder().decode([ClipboardItem].self, from: data) else {
+        guard var clips = try? JSONDecoder().decode([ClipboardItem].self, from: data) else {
             print("❌ Failed to decode clipboard items")
             return []
+        }
+
+        if fillMissingSignatures(in: &clips) {
+            _ = saveClips(clips)
         }
 
         return clips
@@ -327,6 +349,90 @@ class ClipboardManager {
         return true
     }
 
+    private func signatureForText(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hash = SHA256.hash(data: Data(trimmed.utf8))
+        return "text:\(hash.hexString)"
+    }
+
+    private func signatureForImage(_ image: UIImage) -> String? {
+        let data = imageSignatureData(image) ?? image.pngData()
+        guard let data else { return nil }
+        let hash = SHA256.hash(data: data)
+        return "image:\(data.count):\(hash.hexString)"
+    }
+
+    private func imageSignatureData(_ image: UIImage) -> Data? {
+        let targetSize = CGSize(width: 32, height: 32)
+        let cgImage = image.cgImage ?? image.ciImage.flatMap {
+            CIContext().createCGImage($0, from: $0.extent)
+        }
+        guard let cgImage else { return nil }
+        let width = Int(targetSize.width)
+        let height = Int(targetSize.height)
+        let bytesPerRow = width * 4
+
+        var data = Data(count: height * bytesPerRow)
+        let success = data.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(
+                data: buffer.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: bytesPerRow,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else {
+                return false
+            }
+            context.interpolationQuality = .low
+            context.draw(cgImage, in: CGRect(origin: .zero, size: targetSize))
+            return true
+        }
+
+        return success ? data : nil
+    }
+
+    private func isDuplicateSignature(_ signature: String, in clips: [ClipboardItem]) -> Bool {
+        guard !signature.isEmpty else { return false }
+        return clips.contains { !$0.isDeleted && $0.contentSignature == signature }
+    }
+
+    private func migrateMissingSignaturesIfNeeded() {
+        var clips = retrieveAllClips()
+        if fillMissingSignatures(in: &clips) {
+            _ = saveClips(clips)
+        }
+    }
+
+    private func fillMissingSignatures(in clips: inout [ClipboardItem]) -> Bool {
+        var updated = false
+        for index in clips.indices {
+            if !clips[index].contentSignature.isEmpty {
+                continue
+            }
+            switch clips[index].type {
+            case .text:
+                if let text = clips[index].textContent {
+                    clips[index].contentSignature = signatureForText(text)
+                    updated = true
+                }
+            case .image:
+                guard let filename = clips[index].imageFilename,
+                      let directory = clipboardDirectory() else { break }
+                let url = directory.appendingPathComponent(filename)
+                if let image = UIImage(contentsOfFile: url.path),
+                   let signature = signatureForImage(image) {
+                    clips[index].contentSignature = signature
+                } else {
+                    clips[index].contentSignature = "image:legacy:\(filename)"
+                }
+                updated = true
+            }
+        }
+        return updated
+    }
+
     private func normalizedImage(_ image: UIImage) -> UIImage {
         guard image.imageOrientation != .up else { return image }
 
@@ -415,5 +521,11 @@ class ClipboardManager {
         UIGraphicsEndImageContext()
         
         return newImage ?? image
+    }
+}
+
+private extension SHA256.Digest {
+    var hexString: String {
+        map { String(format: "%02x", $0) }.joined()
     }
 }

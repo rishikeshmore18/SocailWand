@@ -1,5 +1,6 @@
 import AppKit
 import CloudKit
+import CryptoKit
 import Foundation
 
 final class MacClipboardSyncService {
@@ -189,12 +190,13 @@ final class MacClipboardSyncService {
             return
         }
 
-        if isDuplicateText(trimmed) {
+        let signature = signatureForText(trimmed)
+        if isDuplicateSignature(signature, in: loadLocalClips()) {
             completion?(false)
             return
         }
 
-        let clip = ClipboardItem(text: trimmed)
+        let clip = ClipboardItem(text: trimmed, contentSignature: signature)
         saveLocalClip(clip)
         syncToCloud(clip)
         DispatchQueue.main.async {
@@ -204,6 +206,16 @@ final class MacClipboardSyncService {
 
     private func saveImageClip(_ image: NSImage, force _: Bool, completion: ((Bool) -> Void)?) {
         guard let imageData = pngData(for: image) else {
+            completion?(false)
+            return
+        }
+
+        guard let signature = signatureForImage(image) else {
+            completion?(false)
+            return
+        }
+
+        if isDuplicateSignature(signature, in: loadLocalClips()) {
             completion?(false)
             return
         }
@@ -231,7 +243,11 @@ final class MacClipboardSyncService {
             try? thumbData.write(to: thumbURL)
         }
 
-        let clip = ClipboardItem(imageFilename: imageFilename, thumbnailFilename: thumbFilename)
+        let clip = ClipboardItem(
+            imageFilename: imageFilename,
+            thumbnailFilename: thumbFilename,
+            contentSignature: signature
+        )
         saveLocalClip(clip)
         syncToCloud(clip)
         DispatchQueue.main.async {
@@ -248,10 +264,9 @@ final class MacClipboardSyncService {
         NotificationCenter.default.post(name: Self.didUpdateNotification, object: nil)
     }
 
-    private func isDuplicateText(_ text: String) -> Bool {
-        loadLocalClips().contains {
-            !$0.isDeleted && $0.type == .text && $0.textContent == text
-        }
+    private func isDuplicateSignature(_ signature: String, in clips: [ClipboardItem]) -> Bool {
+        guard !signature.isEmpty else { return false }
+        return clips.contains { !$0.isDeleted && $0.contentSignature == signature }
     }
 
     // MARK: - Storage (UNIFIED with iOS)
@@ -262,8 +277,12 @@ final class MacClipboardSyncService {
             return []
         }
 
-        guard let clips = try? JSONDecoder().decode([ClipboardItem].self, from: data) else {
+        guard var clips = try? JSONDecoder().decode([ClipboardItem].self, from: data) else {
             return []
+        }
+
+        if fillMissingSignatures(in: &clips) {
+            saveLocalClips(clips)
         }
 
         return clips
@@ -435,6 +454,7 @@ final class MacClipboardSyncService {
         record["isDeleted"] = clip.isDeleted as CKRecordValue
         record["timestamp"] = clip.timestamp as CKRecordValue
         record["modifiedAt"] = clip.modifiedAt as CKRecordValue
+        record["contentSignature"] = clip.contentSignature as CKRecordValue
 
         if clip.isDeleted {
             return record
@@ -476,10 +496,12 @@ final class MacClipboardSyncService {
         let modifiedAt = record["modifiedAt"] as? Date ?? record.modificationDate ?? timestamp
         let isBookmarked = record["isBookmarked"] as? Bool ?? false
         let isDeleted = record["isDeleted"] as? Bool ?? false
+        let storedSignature = record["contentSignature"] as? String ?? ""
 
         switch type {
         case .text:
             let text = record["text"] as? String ?? ""
+            let signature = storedSignature.isEmpty ? signatureForText(text) : storedSignature
             return ClipboardItem(
                 id: id,
                 type: .text,
@@ -487,6 +509,7 @@ final class MacClipboardSyncService {
                 modifiedAt: modifiedAt,
                 isBookmarked: isBookmarked,
                 isDeleted: isDeleted,
+                contentSignature: signature,
                 textContent: text,
                 imageFilename: nil,
                 thumbnailFilename: nil
@@ -494,6 +517,7 @@ final class MacClipboardSyncService {
         case .image:
             let imageFilename = record["imageFilename"] as? String ?? "image_\(id).png"
             let thumbnailFilename = record["thumbnailFilename"] as? String ?? "thumb_\(id).png"
+            let signature = storedSignature.isEmpty ? legacyImageSignature(imageFilename) : storedSignature
             
             if !isDeleted {
                 if let asset = record["imageAsset"] as? CKAsset {
@@ -511,6 +535,7 @@ final class MacClipboardSyncService {
                 modifiedAt: modifiedAt,
                 isBookmarked: isBookmarked,
                 isDeleted: isDeleted,
+                contentSignature: signature,
                 textContent: nil,
                 imageFilename: imageFilename,
                 thumbnailFilename: thumbnailFilename
@@ -787,6 +812,82 @@ final class MacClipboardSyncService {
         return joined.hashValue
     }
 
+    private func signatureForText(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hash = SHA256.hash(data: Data(trimmed.utf8))
+        return "text:\(hash.hexString)"
+    }
+
+    private func signatureForImage(_ image: NSImage) -> String? {
+        let data = imageSignatureData(image) ?? pngData(for: image)
+        guard let data else { return nil }
+        let hash = SHA256.hash(data: data)
+        return "image:\(data.count):\(hash.hexString)"
+    }
+
+    private func imageSignatureData(_ image: NSImage) -> Data? {
+        let targetSize = CGSize(width: 32, height: 32)
+        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            return nil
+        }
+
+        let width = Int(targetSize.width)
+        let height = Int(targetSize.height)
+        let bytesPerRow = width * 4
+        var data = Data(count: height * bytesPerRow)
+
+        let success = data.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(
+                data: buffer.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: bytesPerRow,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else {
+                return false
+            }
+            context.interpolationQuality = .low
+            context.draw(cgImage, in: CGRect(origin: .zero, size: targetSize))
+            return true
+        }
+
+        return success ? data : nil
+    }
+
+    private func legacyImageSignature(_ filename: String) -> String {
+        "image:legacy:\(filename)"
+    }
+
+    private func fillMissingSignatures(in clips: inout [ClipboardItem]) -> Bool {
+        var updated = false
+        for index in clips.indices {
+            if !clips[index].contentSignature.isEmpty {
+                continue
+            }
+            switch clips[index].type {
+            case .text:
+                if let text = clips[index].textContent {
+                    clips[index].contentSignature = signatureForText(text)
+                    updated = true
+                }
+            case .image:
+                guard let filename = clips[index].imageFilename,
+                      let directory = clipboardDirectory() else { break }
+                let url = directory.appendingPathComponent(filename)
+                if let image = NSImage(contentsOf: url),
+                   let signature = signatureForImage(image) {
+                    clips[index].contentSignature = signature
+                } else {
+                    clips[index].contentSignature = legacyImageSignature(filename)
+                }
+                updated = true
+            }
+        }
+        return updated
+    }
+
     // MARK: - Migration
 
     private func performMigrationIfNeeded() {
@@ -806,13 +907,29 @@ final class MacClipboardSyncService {
             
             // Convert MacLocalClipboardItem to ClipboardItem
             let convertedClips: [ClipboardItem] = oldClips.map { old in
-                ClipboardItem(
+                let signature: String
+                switch old.type {
+                case .text:
+                    if let text = old.textContent {
+                        signature = signatureForText(text)
+                    } else {
+                        signature = ""
+                    }
+                case .image:
+                    if let filename = old.imageFilename {
+                        signature = legacyImageSignature(filename)
+                    } else {
+                        signature = ""
+                    }
+                }
+                return ClipboardItem(
                     id: old.id,
                     type: old.type == .text ? .text : .image,
                     timestamp: old.timestamp,
                     modifiedAt: old.modifiedAt,
                     isBookmarked: old.isBookmarked,
                     isDeleted: old.isDeleted,
+                    contentSignature: signature,
                     textContent: old.textContent,
                     imageFilename: old.imageFilename,
                     thumbnailFilename: old.thumbnailFilename
@@ -871,5 +988,11 @@ final class MacClipboardSyncService {
                 }
             }
         }
+    }
+}
+
+private extension SHA256.Digest {
+    var hexString: String {
+        map { String(format: "%02x", $0) }.joined()
     }
 }

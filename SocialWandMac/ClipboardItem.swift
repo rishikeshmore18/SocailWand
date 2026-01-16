@@ -12,6 +12,7 @@ struct ClipboardItem: Codable, Identifiable {
     var modifiedAt: Date
     var isBookmarked: Bool
     var isDeleted: Bool
+    var contentSignature: String
 
     let textContent: String?
     let imageFilename: String?
@@ -22,7 +23,7 @@ struct ClipboardItem: Codable, Identifiable {
         case image
     }
 
-    init(text: String, isBookmarked: Bool = false) {
+    init(text: String, isBookmarked: Bool = false, contentSignature: String = "") {
         self.id = UUID().uuidString
         self.type = .text
         let now = Date()
@@ -30,12 +31,18 @@ struct ClipboardItem: Codable, Identifiable {
         self.modifiedAt = now
         self.isBookmarked = isBookmarked
         self.isDeleted = false
+        self.contentSignature = contentSignature
         self.textContent = text
         self.imageFilename = nil
         self.thumbnailFilename = nil
     }
 
-    init(imageFilename: String, thumbnailFilename: String, isBookmarked: Bool = false) {
+    init(
+        imageFilename: String,
+        thumbnailFilename: String,
+        isBookmarked: Bool = false,
+        contentSignature: String = ""
+    ) {
         self.id = UUID().uuidString
         self.type = .image
         let now = Date()
@@ -43,6 +50,7 @@ struct ClipboardItem: Codable, Identifiable {
         self.modifiedAt = now
         self.isBookmarked = isBookmarked
         self.isDeleted = false
+        self.contentSignature = contentSignature
         self.textContent = nil
         self.imageFilename = imageFilename
         self.thumbnailFilename = thumbnailFilename
@@ -55,6 +63,7 @@ struct ClipboardItem: Codable, Identifiable {
         modifiedAt: Date? = nil,
         isBookmarked: Bool,
         isDeleted: Bool = false,
+        contentSignature: String = "",
         textContent: String?,
         imageFilename: String?,
         thumbnailFilename: String?
@@ -65,6 +74,7 @@ struct ClipboardItem: Codable, Identifiable {
         self.modifiedAt = modifiedAt ?? timestamp
         self.isBookmarked = isBookmarked
         self.isDeleted = isDeleted
+        self.contentSignature = contentSignature
         self.textContent = textContent
         self.imageFilename = imageFilename
         self.thumbnailFilename = thumbnailFilename
@@ -81,6 +91,7 @@ struct ClipboardItem: Codable, Identifiable {
         case modifiedAt
         case isBookmarked
         case isDeleted
+        case contentSignature
         case textContent
         case imageFilename
         case thumbnailFilename
@@ -94,6 +105,7 @@ struct ClipboardItem: Codable, Identifiable {
         modifiedAt = try container.decodeIfPresent(Date.self, forKey: .modifiedAt) ?? timestamp
         isBookmarked = try container.decodeIfPresent(Bool.self, forKey: .isBookmarked) ?? false
         isDeleted = try container.decodeIfPresent(Bool.self, forKey: .isDeleted) ?? false
+        contentSignature = try container.decodeIfPresent(String.self, forKey: .contentSignature) ?? ""
         textContent = try container.decodeIfPresent(String.self, forKey: .textContent)
         imageFilename = try container.decodeIfPresent(String.self, forKey: .imageFilename)
         thumbnailFilename = try container.decodeIfPresent(String.self, forKey: .thumbnailFilename)
@@ -107,6 +119,7 @@ struct ClipboardItem: Codable, Identifiable {
         try container.encode(modifiedAt, forKey: .modifiedAt)
         try container.encode(isBookmarked, forKey: .isBookmarked)
         try container.encode(isDeleted, forKey: .isDeleted)
+        try container.encode(contentSignature, forKey: .contentSignature)
         try container.encodeIfPresent(textContent, forKey: .textContent)
         try container.encodeIfPresent(imageFilename, forKey: .imageFilename)
         try container.encodeIfPresent(thumbnailFilename, forKey: .thumbnailFilename)
