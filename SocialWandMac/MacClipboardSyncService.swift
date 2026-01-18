@@ -20,18 +20,29 @@ final class MacClipboardSyncService {
     private let pendingUpsertsKey = "CloudClipboardPendingUpserts"
     private let pendingDeletesKey = "CloudClipboardPendingDeletes"
     private let migrationFlagKey = "MacToUnifiedStorageMigrated"
+    private let signatureCleanupFlagKey = "MacClipboardDidCleanupSignatures"
     
     private let container = CKContainer(identifier: "iCloud.rishi-more.social-wand")
     private let recordType = "ClipboardItem"
     private let maxTotalItems = 7
 
+    private enum FetchMode {
+        case normal
+        case activeUI
+    }
+
     private let fetchStateQueue = DispatchQueue(label: "mac.clipboard.fetch.state")
     private var fetchInFlight = false
     private var lastFetchAt: Date?
+    private var fetchMode: FetchMode = .normal
+    private var lastUserSaveAt: Date?
     private let fetchMinimumInterval: TimeInterval = 3
+    private let fastFetchMinimumInterval: TimeInterval = 1.5
+    private let userSaveBypassInterval: TimeInterval = 3
 
     private init() {
         performMigrationIfNeeded()
+        performSignatureCleanupIfNeeded()
     }
 
     // MARK: - Public API
@@ -132,8 +143,9 @@ final class MacClipboardSyncService {
         clips[index].markModified()
         enqueuePendingUpsert(clips[index].id)
         saveLocalClips(clips)
+        noteUserSave()
         NotificationCenter.default.post(name: Self.didUpdateNotification, object: nil)
-        syncToCloud(clips[index])
+        pushPendingChanges()
     }
 
     func deleteClip(id: String) {
@@ -144,8 +156,9 @@ final class MacClipboardSyncService {
         enqueuePendingUpsert(clips[index].id)
         deleteLocalFiles(clip: clips[index])
         saveLocalClips(clips)
+        noteUserSave()
         NotificationCenter.default.post(name: Self.didUpdateNotification, object: nil)
-        syncToCloud(clips[index])
+        pushPendingChanges()
     }
 
     func registerCloudKitSubscription() {
@@ -181,6 +194,13 @@ final class MacClipboardSyncService {
         }
     }
 
+    func triggerBackgroundSync() {
+        fetchRemoteClips { [weak self] remoteClips in
+            guard let self, !remoteClips.isEmpty else { return }
+            _ = self.mergeRemoteClips(remoteClips, notify: true)
+        }
+    }
+
     // MARK: - Private Helpers
 
     private func saveTextClip(_ text: String, force _: Bool, completion: ((Bool) -> Void)?) {
@@ -195,10 +215,15 @@ final class MacClipboardSyncService {
             completion?(false)
             return
         }
+        if isSignaturePendingUpsert(signature, in: loadLocalClips()) {
+            completion?(false)
+            return
+        }
 
         let clip = ClipboardItem(text: trimmed, contentSignature: signature)
         saveLocalClip(clip)
-        syncToCloud(clip)
+        pushPendingChanges()
+        triggerBackgroundSync()
         DispatchQueue.main.async {
             completion?(true)
         }
@@ -216,6 +241,10 @@ final class MacClipboardSyncService {
         }
 
         if isDuplicateSignature(signature, in: loadLocalClips()) {
+            completion?(false)
+            return
+        }
+        if isSignaturePendingUpsert(signature, in: loadLocalClips()) {
             completion?(false)
             return
         }
@@ -249,7 +278,8 @@ final class MacClipboardSyncService {
             contentSignature: signature
         )
         saveLocalClip(clip)
-        syncToCloud(clip)
+        pushPendingChanges()
+        triggerBackgroundSync()
         DispatchQueue.main.async {
             completion?(true)
         }
@@ -261,12 +291,21 @@ final class MacClipboardSyncService {
         enforceLimit(clips: &clips)
         saveLocalClips(clips)
         enqueuePendingUpsert(clip.id)
+        noteUserSave()
         NotificationCenter.default.post(name: Self.didUpdateNotification, object: nil)
     }
 
     private func isDuplicateSignature(_ signature: String, in clips: [ClipboardItem]) -> Bool {
         guard !signature.isEmpty else { return false }
         return clips.contains { !$0.isDeleted && $0.contentSignature == signature }
+    }
+
+    private func isSignaturePendingUpsert(_ signature: String, in clips: [ClipboardItem]) -> Bool {
+        guard !signature.isEmpty else { return false }
+        let pendingIDs = loadPendingUpserts()
+        guard !pendingIDs.isEmpty else { return false }
+        let signatureById = Dictionary(uniqueKeysWithValues: clips.map { ($0.id, $0.contentSignature) })
+        return pendingIDs.contains { signatureById[$0] == signature }
     }
 
     // MARK: - Storage (UNIFIED with iOS)
@@ -331,20 +370,24 @@ final class MacClipboardSyncService {
     private func fetchRemoteClips(completion: @escaping ([ClipboardItem]) -> Void) {
         fetchStateQueue.async { [weak self] in
             guard let self = self else { return }
+            let now = Date()
 
             if self.fetchInFlight {
                 completion([])
                 return
             }
 
-            if let lastFetchAt = self.lastFetchAt,
-               Date().timeIntervalSince(lastFetchAt) < self.fetchMinimumInterval {
+            let minimumInterval = (self.fetchMode == .activeUI) ? self.fastFetchMinimumInterval : self.fetchMinimumInterval
+            let shouldBypass = self.lastUserSaveAt.map { now.timeIntervalSince($0) < self.userSaveBypassInterval } ?? false
+            if !shouldBypass,
+               let lastFetchAt = self.lastFetchAt,
+               now.timeIntervalSince(lastFetchAt) < minimumInterval {
                 completion([])
                 return
             }
 
             self.fetchInFlight = true
-            self.lastFetchAt = Date()
+            self.lastFetchAt = now
 
             self.checkCloudAvailability { [weak self] available in
                 guard let self else {
@@ -392,6 +435,18 @@ final class MacClipboardSyncService {
         }
     }
 
+    func setFetchMode(active: Bool) {
+        fetchStateQueue.async { [weak self] in
+            self?.fetchMode = active ? .activeUI : .normal
+        }
+    }
+
+    private func noteUserSave() {
+        fetchStateQueue.async { [weak self] in
+            self?.lastUserSaveAt = Date()
+        }
+    }
+
     private func mergeRemoteClips(
         _ remoteClips: [ClipboardItem],
         notify: Bool = true
@@ -415,15 +470,25 @@ final class MacClipboardSyncService {
         }
 
         var mergedClips = Array(merged.values)
-        
+
+        let repairedIDs = repairImageSignatures(in: &mergedClips)
+        if !repairedIDs.isEmpty {
+            repairedIDs.forEach { enqueuePendingUpsert($0) }
+        }
+
+        let dedupeResult = dedupeClipsBySignature(mergedClips)
+        mergedClips = dedupeResult.clips
+        var pendingDeletes = dedupeResult.newlyDeleted
+
         // Remove local files for deleted items
         for clip in mergedClips where clip.isDeleted && clip.type == .image {
             deleteLocalFiles(clip: clip)
         }
-        
+
         let newlyDeleted = enforceLimit(clips: &mergedClips)
-        if !newlyDeleted.isEmpty {
-            newlyDeleted.forEach { enqueuePendingUpsert($0.id) }
+        pendingDeletes.append(contentsOf: newlyDeleted)
+        if !pendingDeletes.isEmpty {
+            pendingDeletes.forEach { enqueuePendingUpsert($0.id) }
             pushPendingChanges()
         }
         
@@ -433,6 +498,111 @@ final class MacClipboardSyncService {
             NotificationCenter.default.post(name: Self.didUpdateNotification, object: nil)
         }
         return mergedClips
+    }
+
+    private func dedupeClipsBySignature(_ clips: [ClipboardItem]) -> (clips: [ClipboardItem], newlyDeleted: [ClipboardItem]) {
+        var bestBySignature: [String: ClipboardItem] = [:]
+        var keepIds = Set<String>()
+        var newlyDeleted: [ClipboardItem] = []
+
+        for clip in clips {
+            let signature = clip.contentSignature
+            guard !signature.isEmpty else {
+                keepIds.insert(clip.id)
+                continue
+            }
+
+            if let existing = bestBySignature[signature] {
+                let preferred = choosePreferredClip(existing, clip)
+                bestBySignature[signature] = preferred
+                keepIds.insert(preferred.id)
+                if preferred.id != existing.id {
+                    keepIds.remove(existing.id)
+                }
+            } else {
+                bestBySignature[signature] = clip
+                keepIds.insert(clip.id)
+            }
+        }
+
+        var updatedClips: [ClipboardItem] = []
+        for var clip in clips {
+            if keepIds.contains(clip.id) {
+                updatedClips.append(clip)
+                continue
+            }
+
+            if !clip.isDeleted {
+                if clip.type == .image {
+                    deleteLocalFiles(clip: clip)
+                }
+                clip.isDeleted = true
+                clip.markModified()
+                newlyDeleted.append(clip)
+            }
+            updatedClips.append(clip)
+        }
+
+        return (updatedClips, newlyDeleted)
+    }
+
+    private func choosePreferredClip(_ lhs: ClipboardItem, _ rhs: ClipboardItem) -> ClipboardItem {
+        if lhs.isDeleted != rhs.isDeleted {
+            return lhs.isDeleted ? rhs : lhs
+        }
+        if lhs.modifiedAt != rhs.modifiedAt {
+            return lhs.modifiedAt > rhs.modifiedAt ? lhs : rhs
+        }
+        if lhs.timestamp != rhs.timestamp {
+            return lhs.timestamp > rhs.timestamp ? lhs : rhs
+        }
+        if lhs.isBookmarked != rhs.isBookmarked {
+            return lhs.isBookmarked ? lhs : rhs
+        }
+        return lhs.id < rhs.id ? lhs : rhs
+    }
+
+    private func repairImageSignatures(in clips: inout [ClipboardItem]) -> [String] {
+        guard let directory = clipboardDirectory() else { return [] }
+        var updatedIDs: [String] = []
+
+        for index in clips.indices {
+            guard clips[index].type == .image else { continue }
+            let signature = clips[index].contentSignature
+            if !signature.isEmpty, signature.hasPrefix("image:legacy:") == false {
+                continue
+            }
+            guard let filename = clips[index].imageFilename else { continue }
+            let url = directory.appendingPathComponent(filename)
+            guard let image = NSImage(contentsOf: url),
+                  let newSignature = signatureForImage(image) else {
+                continue
+            }
+            if clips[index].contentSignature != newSignature {
+                clips[index].contentSignature = newSignature
+                clips[index].markModified()
+                updatedIDs.append(clips[index].id)
+            }
+        }
+
+        return updatedIDs
+    }
+
+    private func performSignatureCleanupIfNeeded() {
+        guard let defaults = UserDefaults(suiteName: appGroupID) else { return }
+        guard defaults.bool(forKey: signatureCleanupFlagKey) == false else { return }
+
+        let local = loadLocalClips()
+        let dedupeResult = dedupeClipsBySignature(local)
+        let updated = dedupeResult.newlyDeleted.isEmpty == false
+
+        if updated {
+            saveLocalClips(dedupeResult.clips)
+            dedupeResult.newlyDeleted.forEach { enqueuePendingUpsert($0.id) }
+            pushPendingChanges()
+        }
+
+        defaults.set(true, forKey: signatureCleanupFlagKey)
     }
 
     private func syncToCloud(_ clip: ClipboardItem) {
@@ -819,7 +989,8 @@ final class MacClipboardSyncService {
     }
 
     private func signatureForImage(_ image: NSImage) -> String? {
-        let data = imageSignatureData(image) ?? pngData(for: image)
+        let normalized = normalizedImage(image)
+        let data = imageSignatureData(normalized) ?? normalizedImageData(normalized)
         guard let data else { return nil }
         let hash = SHA256.hash(data: data)
         return "image:\(data.count):\(hash.hexString)"
@@ -827,13 +998,10 @@ final class MacClipboardSyncService {
 
     private func imageSignatureData(_ image: NSImage) -> Data? {
         let targetSize = CGSize(width: 32, height: 32)
-        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-            return nil
-        }
-
         let width = Int(targetSize.width)
         let height = Int(targetSize.height)
         let bytesPerRow = width * 4
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
         var data = Data(count: height * bytesPerRow)
 
         let success = data.withUnsafeMutableBytes { buffer -> Bool in
@@ -843,17 +1011,45 @@ final class MacClipboardSyncService {
                 height: height,
                 bitsPerComponent: 8,
                 bytesPerRow: bytesPerRow,
-                space: CGColorSpaceCreateDeviceRGB(),
+                space: colorSpace,
                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
             ) else {
                 return false
             }
             context.interpolationQuality = .low
-            context.draw(cgImage, in: CGRect(origin: .zero, size: targetSize))
+            let graphicsContext = NSGraphicsContext(cgContext: context, flipped: false)
+            NSGraphicsContext.current = graphicsContext
+            image.draw(in: NSRect(origin: .zero, size: targetSize))
+            NSGraphicsContext.current = nil
             return true
         }
 
         return success ? data : nil
+    }
+
+    private func normalizedImageData(_ image: NSImage) -> Data? {
+        let size = NSSize(width: 32, height: 32)
+        let normalized = NSImage(size: size)
+        normalized.lockFocus()
+        image.draw(in: NSRect(origin: .zero, size: size))
+        normalized.unlockFocus()
+        guard let tiff = normalized.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff) else {
+            return nil
+        }
+        return rep.representation(using: .png, properties: [:])
+    }
+
+    private func normalizedImage(_ image: NSImage) -> NSImage {
+        guard let tiff = image.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff) else {
+            return image
+        }
+        let newImage = NSImage(size: image.size)
+        newImage.lockFocus()
+        rep.draw(in: NSRect(origin: .zero, size: image.size))
+        newImage.unlockFocus()
+        return newImage
     }
 
     private func legacyImageSignature(_ filename: String) -> String {
@@ -863,7 +1059,8 @@ final class MacClipboardSyncService {
     private func fillMissingSignatures(in clips: inout [ClipboardItem]) -> Bool {
         var updated = false
         for index in clips.indices {
-            if !clips[index].contentSignature.isEmpty {
+            if !clips[index].contentSignature.isEmpty,
+               clips[index].contentSignature.hasPrefix("image:legacy:") == false {
                 continue
             }
             switch clips[index].type {

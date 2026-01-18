@@ -72,6 +72,7 @@ struct ClipboardHistoryView: View {
         }
         .onAppear {
             loadClips()
+            CloudClipboardSyncService.shared.setFetchMode(active: true)
             refreshFromCloud()
             startRefreshTimer()
             if let highlightedClipID {
@@ -92,6 +93,7 @@ struct ClipboardHistoryView: View {
         .onDisappear {
             // Clear thumbnails from RAM when view closes
             loadedThumbnails.removeAll()
+            CloudClipboardSyncService.shared.setFetchMode(active: false)
             stopRefreshTimer()
             highlightWorkItem?.cancel()
             highlightWorkItem = nil
@@ -330,7 +332,7 @@ struct ClipboardHistoryView: View {
 
     private func startRefreshTimer() {
         guard refreshTimer == nil else { return }
-        let timer = Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { _ in
+        let timer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { _ in
             refreshFromCloud()
         }
         RunLoop.main.add(timer, forMode: .common)

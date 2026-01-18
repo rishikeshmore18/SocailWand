@@ -3,6 +3,7 @@ import SwiftUI
 final class ClipboardPanelViewModel: ObservableObject {
     @Published var clips: [MacClipboardItem] = []
     @Published var cloudStatusMessage: String?
+    private var refreshTimer: Timer?
 
     init() {
         NotificationCenter.default.addObserver(
@@ -39,6 +40,20 @@ final class ClipboardPanelViewModel: ObservableObject {
                 self.clips = clips
             }
         }
+    }
+
+    func startPolling() {
+        guard refreshTimer == nil else { return }
+        let timer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
+            self?.refresh()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        refreshTimer = timer
+    }
+
+    func stopPolling() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
     }
 
     @objc private func handleClipboardUpdate() {
@@ -170,6 +185,15 @@ struct ClipboardPanelView: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(Color.black.opacity(0.85))
         )
+        .onAppear {
+            MacClipboardSyncService.shared.setFetchMode(active: true)
+            viewModel.refresh()
+            viewModel.startPolling()
+        }
+        .onDisappear {
+            MacClipboardSyncService.shared.setFetchMode(active: false)
+            viewModel.stopPolling()
+        }
     }
 }
 

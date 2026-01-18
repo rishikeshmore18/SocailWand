@@ -2976,6 +2976,7 @@ final class KeyboardViewController: KeyboardInputViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         updateFullAccessFlag()
+        CloudClipboardSyncService.shared.fetchRemoteChanges()
     }
     
     override func viewWillDisappear(_ animated: Bool) {

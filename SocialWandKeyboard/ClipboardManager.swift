@@ -71,6 +71,10 @@ class ClipboardManager {
             print("⚠️ Text already saved")
             return nil
         }
+        if isSignaturePendingUpsert(signature, in: allClips) {
+            print("⚠️ Text already pending sync")
+            return nil
+        }
 
         let newClip = ClipboardItem(text: text, contentSignature: signature)
         allClips.insert(newClip, at: 0)
@@ -81,6 +85,7 @@ class ClipboardManager {
             deletedClips.forEach {
                 CloudClipboardSyncService.shared.handleLocalUpsert($0, requiresOpenAccess: true)
             }
+            CloudClipboardSyncService.shared.fetchRemoteChanges(completion: nil)
         }
         return saved ? newClip : nil
     }
@@ -99,6 +104,10 @@ class ClipboardManager {
 
         if isDuplicateSignature(signature, in: allClips) {
             print("⚠️ Image already saved")
+            return nil
+        }
+        if isSignaturePendingUpsert(signature, in: allClips) {
+            print("⚠️ Image already pending sync")
             return nil
         }
         
@@ -151,6 +160,7 @@ class ClipboardManager {
             deletedClips.forEach {
                 CloudClipboardSyncService.shared.handleLocalUpsert($0, requiresOpenAccess: true)
             }
+            CloudClipboardSyncService.shared.fetchRemoteChanges(completion: nil)
         }
         return saved ? newClip : nil
     }
@@ -356,7 +366,8 @@ class ClipboardManager {
     }
 
     private func signatureForImage(_ image: UIImage) -> String? {
-        let data = imageSignatureData(image) ?? image.pngData()
+        let data = imageSignatureData(image)
+            ?? normalizedPngSignatureData(image)
         guard let data else { return nil }
         let hash = SHA256.hash(data: data)
         return "image:\(data.count):\(hash.hexString)"
@@ -364,13 +375,11 @@ class ClipboardManager {
 
     private func imageSignatureData(_ image: UIImage) -> Data? {
         let targetSize = CGSize(width: 32, height: 32)
-        let cgImage = image.cgImage ?? image.ciImage.flatMap {
-            CIContext().createCGImage($0, from: $0.extent)
-        }
-        guard let cgImage else { return nil }
+        guard let cgImage = normalizedCGImage(from: image) else { return nil }
         let width = Int(targetSize.width)
         let height = Int(targetSize.height)
         let bytesPerRow = width * 4
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
 
         var data = Data(count: height * bytesPerRow)
         let success = data.withUnsafeMutableBytes { buffer -> Bool in
@@ -380,7 +389,7 @@ class ClipboardManager {
                 height: height,
                 bitsPerComponent: 8,
                 bytesPerRow: bytesPerRow,
-                space: CGColorSpaceCreateDeviceRGB(),
+                space: colorSpace,
                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
             ) else {
                 return false
@@ -393,9 +402,54 @@ class ClipboardManager {
         return success ? data : nil
     }
 
+    private func normalizedPngSignatureData(_ image: UIImage) -> Data? {
+        let renderer = UIGraphicsImageRenderer(
+            size: CGSize(width: 32, height: 32),
+            format: UIGraphicsImageRendererFormat.default()
+        )
+        let output = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: CGSize(width: 32, height: 32)))
+        }
+        return output.pngData()
+    }
+
+    private func normalizedCGImage(from image: UIImage) -> CGImage? {
+        if image.imageOrientation == .up, let cgImage = image.cgImage {
+            return cgImage
+        }
+        let ciImage = image.ciImage ?? CIImage(image: image)
+        guard let source = ciImage else { return nil }
+        let oriented = source.oriented(forExifOrientation: exifOrientation(from: image.imageOrientation))
+        return CIContext().createCGImage(oriented, from: oriented.extent)
+    }
+
+    private func exifOrientation(from orientation: UIImage.Orientation) -> Int32 {
+        switch orientation {
+        case .up: return Int32(CGImagePropertyOrientation.up.rawValue)
+        case .down: return Int32(CGImagePropertyOrientation.down.rawValue)
+        case .left: return Int32(CGImagePropertyOrientation.left.rawValue)
+        case .right: return Int32(CGImagePropertyOrientation.right.rawValue)
+        case .upMirrored: return Int32(CGImagePropertyOrientation.upMirrored.rawValue)
+        case .downMirrored: return Int32(CGImagePropertyOrientation.downMirrored.rawValue)
+        case .leftMirrored: return Int32(CGImagePropertyOrientation.leftMirrored.rawValue)
+        case .rightMirrored: return Int32(CGImagePropertyOrientation.rightMirrored.rawValue)
+        @unknown default:
+            return Int32(CGImagePropertyOrientation.up.rawValue)
+        }
+    }
+
     private func isDuplicateSignature(_ signature: String, in clips: [ClipboardItem]) -> Bool {
         guard !signature.isEmpty else { return false }
         return clips.contains { !$0.isDeleted && $0.contentSignature == signature }
+    }
+
+    private func isSignaturePendingUpsert(_ signature: String, in clips: [ClipboardItem]) -> Bool {
+        guard !signature.isEmpty else { return false }
+        guard let defaults = UserDefaults(suiteName: appGroupID) else { return false }
+        let pendingIDs = defaults.stringArray(forKey: "CloudClipboardPendingUpserts") ?? []
+        guard !pendingIDs.isEmpty else { return false }
+        let signatureById = Dictionary(uniqueKeysWithValues: clips.map { ($0.id, $0.contentSignature) })
+        return pendingIDs.contains { signatureById[$0] == signature }
     }
 
     private func migrateMissingSignaturesIfNeeded() {
@@ -408,7 +462,8 @@ class ClipboardManager {
     private func fillMissingSignatures(in clips: inout [ClipboardItem]) -> Bool {
         var updated = false
         for index in clips.indices {
-            if !clips[index].contentSignature.isEmpty {
+            if !clips[index].contentSignature.isEmpty,
+               clips[index].contentSignature.hasPrefix("image:legacy:") == false {
                 continue
             }
             switch clips[index].type {

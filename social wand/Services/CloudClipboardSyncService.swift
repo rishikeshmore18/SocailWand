@@ -6,6 +6,8 @@
 import CloudKit
 import CryptoKit
 import Foundation
+import ImageIO
+import CoreImage
 import UIKit
 
 final class CloudClipboardSyncService {
@@ -18,15 +20,25 @@ final class CloudClipboardSyncService {
     private let pendingUpsertsKey = "CloudClipboardPendingUpserts"
     private let pendingDeletesKey = "CloudClipboardPendingDeletes"
     private let migrationFlagKey = "CloudClipboardDidMigrateModifiedAt"
+    private let signatureCleanupFlagKey = "CloudClipboardDidCleanupSignatures"
     private let maxTotalItems = 7
     private let recordType = "ClipboardItem"
 
     private let container: CKContainer
     private let database: CKDatabase
+    private enum FetchMode {
+        case normal
+        case activeUI
+    }
+
     private let fetchStateQueue = DispatchQueue(label: "cloud.clipboard.fetch.state")
     private var fetchInFlight = false
     private var lastFetchAt: Date?
+    private var fetchMode: FetchMode = .normal
+    private var lastUserSaveAt: Date?
     private let fetchMinimumInterval: TimeInterval = 3
+    private let fastFetchMinimumInterval: TimeInterval = 1.5
+    private let userSaveBypassInterval: TimeInterval = 3
 
     private init(container: CKContainer = CKContainer(identifier: "iCloud.rishi-more.social-wand")) {
         self.container = container
@@ -65,11 +77,13 @@ final class CloudClipboardSyncService {
     }
 
     func handleLocalUpsert(_ clip: ClipboardItem, requiresOpenAccess: Bool) {
+        noteUserSave()
         enqueueUpsert(id: clip.id)
         pushLocalChanges(requiresOpenAccess: requiresOpenAccess)
     }
 
     func handleLocalDelete(id: String, requiresOpenAccess: Bool) {
+        noteUserSave()
         var localClips = loadLocalClips()
         if let index = localClips.firstIndex(where: { $0.id == id }) {
             localClips[index].isDeleted = true
@@ -83,6 +97,7 @@ final class CloudClipboardSyncService {
     }
 
     func handleLocalClear(ids: [String], requiresOpenAccess: Bool) {
+        noteUserSave()
         var localClips = loadLocalClips()
         var updated = false
         for id in ids {
@@ -103,6 +118,7 @@ final class CloudClipboardSyncService {
 
     func pushLocalChanges(requiresOpenAccess: Bool, completion: ((Bool) -> Void)? = nil) {
         performModifiedAtMigrationIfNeeded()
+        performSignatureCleanupIfNeeded()
 
         checkSyncAvailability(requiresOpenAccess: requiresOpenAccess) { [weak self] availability in
             guard let self = self, availability == .available else {
@@ -191,20 +207,24 @@ final class CloudClipboardSyncService {
     func fetchRemoteChanges(completion: ((Bool) -> Void)? = nil) {
         fetchStateQueue.async { [weak self] in
             guard let self = self else { return }
+            let now = Date()
 
             if self.fetchInFlight {
                 completion?(true)
                 return
             }
 
-            if let lastFetchAt = self.lastFetchAt,
-               Date().timeIntervalSince(lastFetchAt) < self.fetchMinimumInterval {
+            let minimumInterval = (self.fetchMode == .activeUI) ? self.fastFetchMinimumInterval : self.fetchMinimumInterval
+            let shouldBypass = self.lastUserSaveAt.map { now.timeIntervalSince($0) < self.userSaveBypassInterval } ?? false
+            if !shouldBypass,
+               let lastFetchAt = self.lastFetchAt,
+               now.timeIntervalSince(lastFetchAt) < minimumInterval {
                 completion?(true)
                 return
             }
 
             self.fetchInFlight = true
-            self.lastFetchAt = Date()
+            self.lastFetchAt = now
 
             self.checkSyncAvailability(requiresOpenAccess: false) { [weak self] availability in
                 guard let self = self else {
@@ -251,6 +271,18 @@ final class CloudClipboardSyncService {
                     completion?(true)
                 }
             }
+        }
+    }
+
+    func setFetchMode(active: Bool) {
+        fetchStateQueue.async { [weak self] in
+            self?.fetchMode = active ? .activeUI : .normal
+        }
+    }
+
+    private func noteUserSave() {
+        fetchStateQueue.async { [weak self] in
+            self?.lastUserSaveAt = Date()
         }
     }
 
@@ -402,14 +434,24 @@ final class CloudClipboardSyncService {
 
         var mergedClips = Array(merged.values)
 
+        let repairedIDs = repairImageSignatures(in: &mergedClips)
+        if !repairedIDs.isEmpty {
+            repairedIDs.forEach { enqueueUpsert(id: $0) }
+        }
+
+        let dedupeResult = dedupeClipsBySignature(mergedClips)
+        mergedClips = dedupeResult.clips
+        var pendingDeletes = dedupeResult.newlyDeleted
+
         // Remove local files for deleted items
         for clip in mergedClips where clip.isDeleted && clip.type == .image {
             deleteLocalFiles(clip: clip)
         }
 
         let newlyDeleted = enforceLimit(clips: &mergedClips)
-        if !newlyDeleted.isEmpty {
-            newlyDeleted.forEach { enqueueUpsert(id: $0.id) }
+        pendingDeletes.append(contentsOf: newlyDeleted)
+        if !pendingDeletes.isEmpty {
+            pendingDeletes.forEach { enqueueUpsert(id: $0.id) }
             pushLocalChanges(requiresOpenAccess: false)
         }
 
@@ -423,6 +465,184 @@ final class CloudClipboardSyncService {
             return $0.id < $1.id
         }
         saveLocalClips(mergedClips)
+    }
+
+    private func dedupeClipsBySignature(_ clips: [ClipboardItem]) -> (clips: [ClipboardItem], newlyDeleted: [ClipboardItem]) {
+        var bestBySignature: [String: ClipboardItem] = [:]
+        var keepIds = Set<String>()
+        var newlyDeleted: [ClipboardItem] = []
+
+        for clip in clips {
+            let signature = clip.contentSignature
+            guard !signature.isEmpty else {
+                keepIds.insert(clip.id)
+                continue
+            }
+
+            if let existing = bestBySignature[signature] {
+                let preferred = choosePreferredClip(existing, clip)
+                bestBySignature[signature] = preferred
+                keepIds.insert(preferred.id)
+                if preferred.id != existing.id {
+                    keepIds.remove(existing.id)
+                }
+            } else {
+                bestBySignature[signature] = clip
+                keepIds.insert(clip.id)
+            }
+        }
+
+        var updatedClips: [ClipboardItem] = []
+        for var clip in clips {
+            if keepIds.contains(clip.id) {
+                updatedClips.append(clip)
+                continue
+            }
+
+            if !clip.isDeleted {
+                if clip.type == .image {
+                    deleteLocalFiles(clip: clip)
+                }
+                clip.isDeleted = true
+                clip.markModified()
+                newlyDeleted.append(clip)
+            }
+            updatedClips.append(clip)
+        }
+
+        return (updatedClips, newlyDeleted)
+    }
+
+    private func choosePreferredClip(_ lhs: ClipboardItem, _ rhs: ClipboardItem) -> ClipboardItem {
+        if lhs.isDeleted != rhs.isDeleted {
+            return lhs.isDeleted ? rhs : lhs
+        }
+        if lhs.modifiedAt != rhs.modifiedAt {
+            return lhs.modifiedAt > rhs.modifiedAt ? lhs : rhs
+        }
+        if lhs.timestamp != rhs.timestamp {
+            return lhs.timestamp > rhs.timestamp ? lhs : rhs
+        }
+        if lhs.isBookmarked != rhs.isBookmarked {
+            return lhs.isBookmarked ? lhs : rhs
+        }
+        return lhs.id < rhs.id ? lhs : rhs
+    }
+
+    private func repairImageSignatures(in clips: inout [ClipboardItem]) -> [String] {
+        guard let directory = clipboardDirectory() else { return [] }
+        var updatedIDs: [String] = []
+
+        for index in clips.indices {
+            guard clips[index].type == .image else { continue }
+            let signature = clips[index].contentSignature
+            if !signature.isEmpty, signature.hasPrefix("image:legacy:") == false {
+                continue
+            }
+            guard let filename = clips[index].imageFilename else { continue }
+            let url = directory.appendingPathComponent(filename)
+            guard let image = UIImage(contentsOfFile: url.path),
+                  let newSignature = signatureForImage(image) else {
+                continue
+            }
+            if clips[index].contentSignature != newSignature {
+                clips[index].contentSignature = newSignature
+                clips[index].markModified()
+                updatedIDs.append(clips[index].id)
+            }
+        }
+
+        return updatedIDs
+    }
+
+    private func performSignatureCleanupIfNeeded() {
+        guard let defaults = UserDefaults(suiteName: appGroupID) else { return }
+        guard defaults.bool(forKey: signatureCleanupFlagKey) == false else { return }
+
+        let local = loadLocalClips()
+        let dedupeResult = dedupeClipsBySignature(local)
+        let updated = dedupeResult.newlyDeleted.isEmpty == false
+
+        if updated {
+            saveLocalClips(dedupeResult.clips)
+            dedupeResult.newlyDeleted.forEach { enqueueUpsert(id: $0.id) }
+        }
+
+        defaults.set(true, forKey: signatureCleanupFlagKey)
+    }
+
+    private func signatureForImage(_ image: UIImage) -> String? {
+        let data = imageSignatureData(image)
+            ?? normalizedPngSignatureData(image)
+        guard let data else { return nil }
+        let hash = SHA256.hash(data: data)
+        return "image:\(data.count):\(hash.hexString)"
+    }
+
+    private func imageSignatureData(_ image: UIImage) -> Data? {
+        let targetSize = CGSize(width: 32, height: 32)
+        guard let cgImage = normalizedCGImage(from: image) else { return nil }
+        let width = Int(targetSize.width)
+        let height = Int(targetSize.height)
+        let bytesPerRow = width * 4
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+
+        var data = Data(count: height * bytesPerRow)
+        let success = data.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(
+                data: buffer.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: bytesPerRow,
+                space: colorSpace,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else {
+                return false
+            }
+
+            context.interpolationQuality = .low
+            context.draw(cgImage, in: CGRect(origin: .zero, size: targetSize))
+            return true
+        }
+
+        return success ? data : nil
+    }
+
+    private func normalizedPngSignatureData(_ image: UIImage) -> Data? {
+        let renderer = UIGraphicsImageRenderer(
+            size: CGSize(width: 32, height: 32),
+            format: UIGraphicsImageRendererFormat.default()
+        )
+        let output = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: CGSize(width: 32, height: 32)))
+        }
+        return output.pngData()
+    }
+
+    private func normalizedCGImage(from image: UIImage) -> CGImage? {
+        if image.imageOrientation == .up, let cgImage = image.cgImage {
+            return cgImage
+        }
+        let ciImage = image.ciImage ?? CIImage(image: image)
+        guard let source = ciImage else { return nil }
+        let oriented = source.oriented(forExifOrientation: exifOrientation(from: image.imageOrientation))
+        return CIContext().createCGImage(oriented, from: oriented.extent)
+    }
+
+    private func exifOrientation(from orientation: UIImage.Orientation) -> Int32 {
+        switch orientation {
+        case .up: return Int32(CGImagePropertyOrientation.up.rawValue)
+        case .down: return Int32(CGImagePropertyOrientation.down.rawValue)
+        case .left: return Int32(CGImagePropertyOrientation.left.rawValue)
+        case .right: return Int32(CGImagePropertyOrientation.right.rawValue)
+        case .upMirrored: return Int32(CGImagePropertyOrientation.upMirrored.rawValue)
+        case .downMirrored: return Int32(CGImagePropertyOrientation.downMirrored.rawValue)
+        case .leftMirrored: return Int32(CGImagePropertyOrientation.leftMirrored.rawValue)
+        case .rightMirrored: return Int32(CGImagePropertyOrientation.rightMirrored.rawValue)
+        @unknown default:
+            return Int32(CGImagePropertyOrientation.up.rawValue)
+        }
     }
 
     private func loadLocalClips() -> [ClipboardItem] {
