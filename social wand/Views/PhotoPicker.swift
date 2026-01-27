@@ -8,11 +8,26 @@ import PhotosUI
 
 struct PhotoPicker: UIViewControllerRepresentable {
     @Binding var selectedPhotos: [UIImage]
+    let selectionLimit: Int
+    let append: Bool
+    let onStartLoading: (() -> Void)?
     @Environment(\.dismiss) var dismiss
+    
+    init(
+        selectedPhotos: Binding<[UIImage]>,
+        selectionLimit: Int = 5,
+        append: Bool = false,
+        onStartLoading: (() -> Void)? = nil
+    ) {
+        self._selectedPhotos = selectedPhotos
+        self.selectionLimit = selectionLimit
+        self.append = append
+        self.onStartLoading = onStartLoading
+    }
     
     func makeUIViewController(context: Context) -> PHPickerViewController {
         var config = PHPickerConfiguration()
-        config.selectionLimit = 5 // Maximum 5 photos
+        config.selectionLimit = selectionLimit // Maximum photos per session
         config.filter = .images
         
         let picker = PHPickerViewController(configuration: config)
@@ -42,6 +57,9 @@ struct PhotoPicker: UIViewControllerRepresentable {
             }
             
             print("📸 PhotoPicker: User selected \(results.count) photos - loading images...")
+            DispatchQueue.main.async {
+                self.parent.onStartLoading?()
+            }
             
             // ✅ FIX: Wait for ALL images to load using DispatchGroup
             let group = DispatchGroup()
@@ -68,7 +86,11 @@ struct PhotoPicker: UIViewControllerRepresentable {
                 print("✅ PhotoPicker: All images loaded (\(loadedImages.count)), updating binding and dismissing")
                 
                 // Update binding with all images at once
-                self.parent.selectedPhotos = loadedImages
+                if self.parent.append {
+                    self.parent.selectedPhotos.append(contentsOf: loadedImages)
+                } else {
+                    self.parent.selectedPhotos = loadedImages
+                }
                 
                 // NOW dismiss after images are loaded
                 self.parent.dismiss()

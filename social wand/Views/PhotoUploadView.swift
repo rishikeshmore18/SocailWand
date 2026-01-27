@@ -5,6 +5,10 @@
 
 import SwiftUI
 
+#if canImport(UIKit)
+import UIKit
+#endif
+
 struct PhotoUploadView: View {
     enum UploadState {
         case pickingPhotos
@@ -18,12 +22,17 @@ struct PhotoUploadView: View {
     @State private var context: String = ""
     @State private var errorMessage: String?
     @State private var showPhotoPicker = true
+    @State private var showAddMorePicker = false
+    @State private var showMaxPhotosAlert = false
+    @State private var showProcessingOverlay = false
+    @State private var processingOverlayDismiss: DispatchWorkItem?
     @State private var selectedTones: [String] = []
     @State private var selectedLength: String? = nil
     @State private var showTonePicker = false
     @State private var showLengthPicker = false
     @State private var returnToApp: String = "Instagram"
     @State private var allGenerations: [[String]] = []  // ✅ NEW: Store all generations
+    @FocusState private var isContextFocused: Bool
     
     let sourceApp: String
     
@@ -76,6 +85,19 @@ struct PhotoUploadView: View {
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showTonePicker) { tonePickerSheet }
             .sheet(isPresented: $showLengthPicker) { lengthPickerSheet }
+            .sheet(isPresented: $showAddMorePicker) {
+                PhotoPicker(
+                    selectedPhotos: $selectedPhotos,
+                    selectionLimit: max(0, 5 - selectedPhotos.count),
+                    append: true,
+                    onStartLoading: { startProcessingOverlay() }
+                )
+            }
+            .alert("Max 5 photos", isPresented: $showMaxPhotosAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("You can upload up to 5 photos.")
+            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     if case .success = state {
@@ -134,116 +156,148 @@ struct PhotoUploadView: View {
             }
         }
         .sheet(isPresented: $showPhotoPicker) {
-            PhotoPicker(selectedPhotos: $selectedPhotos)
+            PhotoPicker(
+                selectedPhotos: $selectedPhotos,
+                selectionLimit: 5,
+                append: false,
+                onStartLoading: { startProcessingOverlay() }
+            )
         }
         .onChange(of: selectedPhotos) { oldValue, newValue in
-            if !newValue.isEmpty && oldValue.isEmpty {
-                print("✅ PhotoUploadView: Photos loaded (\(newValue.count)), advancing to context screen")
-                state = .addingContext
-            } else if newValue.isEmpty && !oldValue.isEmpty {
+            if newValue.isEmpty {
+                if !oldValue.isEmpty {
                 print("⚠️ PhotoUploadView: All photos removed, returning to picker")
                 state = .pickingPhotos
-            } else if newValue.isEmpty && oldValue.isEmpty && !showPhotoPicker {
+                } else if !showPhotoPicker && !showAddMorePicker {
                 print("❌ PhotoUploadView: User canceled without selecting photos")
                 dismiss()
+                }
+                return
+            }
+
+            stopProcessingOverlay()
+            if oldValue.isEmpty {
+                if case .success = state {
+                    return
+                }
+                print("✅ PhotoUploadView: Photos loaded (\(newValue.count)), advancing to context screen")
+                state = .addingContext
             }
         }
     }
     
     private var contextView: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(spacing: 0) {
-                    // 1. PHOTO SECTION
-                    if !selectedPhotos.isEmpty {
-                        photoPreviewGrid
-                            .padding(.top, 20)
-                            .padding(.bottom, 20)
-                    }
-                    
-                    // 2. HEADING
-                    HStack {
-                        Text("Add Context (Optional)")
-                            .font(.system(size: 17, weight: .semibold))
-                        Spacer()
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 16)
-                    
-                    // 3. BUTTONS
-                    HStack(spacing: 12) {
-                        Button(action: { showTonePicker = true }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "waveform").font(.system(size: 14))
-                                Text("Tone").font(.system(size: 15, weight: .medium))
-                            }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                            .background(Color(hex: "8B5CF6"))
-                            .cornerRadius(10)
+        ZStack {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // 1. PHOTO SECTION
+                        if !selectedPhotos.isEmpty {
+                            photoPreviewGrid
+                                .padding(.top, 20)
+                                .padding(.bottom, 20)
                         }
                         
-                        Button(action: { showLengthPicker = true }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "text.alignleft").font(.system(size: 14))
-                                Text("Length").font(.system(size: 15, weight: .medium))
-                            }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                            .background(Color(hex: "8B5CF6"))
-                            .cornerRadius(10)
+                        // 2. HEADING
+                        HStack {
+                            Text("Add Context (Optional)")
+                                .font(.system(size: 17, weight: .semibold))
+                            Spacer()
                         }
-                        Spacer()
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 16)
+                        
+                        // 3. BUTTONS
+                        HStack(spacing: 12) {
+                            Button(action: { showTonePicker = true }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "waveform").font(.system(size: 14))
+                                    Text("Tone").font(.system(size: 15, weight: .medium))
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background(Color(hex: "8B5CF6"))
+                                .cornerRadius(10)
+                            }
+                            
+                            Button(action: { showLengthPicker = true }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "text.alignleft").font(.system(size: 14))
+                                    Text("Length").font(.system(size: 15, weight: .medium))
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background(Color(hex: "8B5CF6"))
+                                .cornerRadius(10)
+                            }
+                            Spacer()
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 12)
+                        
+                        // ⭐ 3.5 NEW: PREFERENCES CONTAINER (FIXED WITH PROPER FLOWLAYOUT)
+                        preferencesContainer
+                        
+                        // 4. TEXT FIELD
+                        VStack(alignment: .leading, spacing: 0) {
+                            TextField("E.g., beach day, birthday party...", text: $context, axis: .vertical)
+                                .textFieldStyle(.roundedBorder)
+                                .lineLimit(8...12)
+                                .frame(minHeight: 200)
+                                .focused($isContextFocused)
+                                .id("context-field")
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.top, 8)
+                        
+                        // 5. ERROR MESSAGE
+                        if let errorMessage = errorMessage {
+                            Text(errorMessage)
+                                .font(.system(size: 14))
+                                .foregroundColor(.red)
+                                .padding(.horizontal, 20)
+                                .padding(.top, 12)
+                        }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 12)
-                    
-                    // ⭐ 3.5 NEW: PREFERENCES CONTAINER (FIXED WITH PROPER FLOWLAYOUT)
-                    preferencesContainer
-                    
-                    // 4. TEXT FIELD
-                    VStack(alignment: .leading, spacing: 0) {
-                        TextField("E.g., beach day, birthday party...", text: $context, axis: .vertical)
-                            .textFieldStyle(.roundedBorder)
-                            .lineLimit(8...12)
-                            .frame(minHeight: 200)
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                    
-                    // 5. ERROR MESSAGE
-                    if let errorMessage = errorMessage {
-                        Text(errorMessage)
-                            .font(.system(size: 14))
-                            .foregroundColor(.red)
-                            .padding(.horizontal, 20)
-                            .padding(.top, 12)
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: isContextFocused) { _, focused in
+                    guard focused else { return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            proxy.scrollTo("context-field", anchor: .bottom)
+                        }
                     }
                 }
             }
-            
-            Spacer()
-            
-            // 6. GENERATE BUTTON
-            Button(action: generateCaption) {
-                Text("Generate")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 54)
-                    .background(
-                        LinearGradient(
-                            colors: [Color(hex: "8B5CF6"), Color(hex: "7C3AED")],
-                            startPoint: .leading,
-                            endPoint: .trailing
+            .safeAreaInset(edge: .bottom) {
+                Button(action: generateCaption) {
+                    Text("Generate")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(
+                            LinearGradient(
+                                colors: [Color(hex: "8B5CF6"), Color(hex: "7C3AED")],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
                         )
-                    )
-                    .cornerRadius(16)
+                        .cornerRadius(16)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .padding(.bottom, 12)
+                .background(Color(UIColor.systemBackground).opacity(0.95))
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 32)
+            .blur(radius: showProcessingOverlay ? 6 : 0)
+            
+            if showProcessingOverlay {
+                processingOverlayView
+            }
         }
     }
     
@@ -321,8 +375,72 @@ struct PhotoUploadView: View {
                         .offset(x: 8, y: -8)
                     }
                 }
+                
+                Button(action: {
+                    if selectedPhotos.count >= 5 {
+                        showMaxPhotosAlert = true
+                    } else {
+                        showAddMorePicker = true
+                    }
+                }) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.gray.opacity(0.4), style: StrokeStyle(lineWidth: 1.5, dash: [6]))
+                            .frame(width: 100, height: 100)
+                        Image(systemName: "plus")
+                            .font(.system(size: 26, weight: .semibold))
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .opacity(selectedPhotos.count >= 5 ? 0.6 : 1.0)
             }
             .padding(.horizontal, 20)
+        }
+    }
+    
+    private var processingOverlayView: some View {
+        ZStack {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .ignoresSafeArea()
+            VStack(spacing: 16) {
+                ProgressView().scaleEffect(1.3)
+                Text("Processing photos...")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.secondary)
+            }
+            .padding(24)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color(UIColor.systemBackground))
+                    .shadow(color: Color.black.opacity(0.15), radius: 12, x: 0, y: 6)
+            )
+        }
+        .transition(.opacity)
+    }
+    
+    private func startProcessingOverlay() {
+        processingOverlayDismiss?.cancel()
+        showProcessingOverlay = true
+        if case .pickingPhotos = state {
+            state = .addingContext
+        }
+        let task = DispatchWorkItem {
+            withAnimation(.easeOut(duration: 0.2)) {
+                showProcessingOverlay = false
+            }
+        }
+        processingOverlayDismiss = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: task)
+    }
+    
+    private func stopProcessingOverlay() {
+        processingOverlayDismiss?.cancel()
+        processingOverlayDismiss = nil
+        if showProcessingOverlay {
+            withAnimation(.easeOut(duration: 0.2)) {
+                showProcessingOverlay = false
+            }
         }
     }
     
