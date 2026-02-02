@@ -35,6 +35,7 @@ struct TestYourSocialSkillsView: View {
     @FocusState private var isReplyFocused: Bool
     @State private var showPhotoUpload = false
     @State private var photoUploadSourceApp = "instagram"
+    @State private var photoUploadPicker: UploadSource? = nil  // ✅ NEW: Store which picker to open
     @State private var hasCheckedPhotoUpload = false  // Prevent multiple checks
     
     private let rater = SocialRater()
@@ -97,7 +98,7 @@ struct TestYourSocialSkillsView: View {
                     }
                 }
                 .fullScreenCover(isPresented: $showPhotoUpload) {
-                    PhotoUploadView(sourceApp: photoUploadSourceApp)
+                    PhotoUploadView(sourceApp: photoUploadSourceApp, initialPicker: photoUploadPicker)
                 }
         }
     }
@@ -266,7 +267,32 @@ struct TestYourSocialSkillsView: View {
             // Get source app (DON'T clear flag yet)
             photoUploadSourceApp = defaults.string(forKey: "PhotoUploadSourceApp") ?? "instagram"
             
-            print("✅ Showing photo upload view for source: \(photoUploadSourceApp)")
+            // ✅ NEW: Get picker type from keyboard and convert to UploadSource
+            if let pickerString = defaults.string(forKey: "PhotoUploadPicker") {
+                print("📋 Raw picker string from UserDefaults: '\(pickerString)'")
+                switch pickerString {
+                case "photos":
+                    photoUploadPicker = .photoLibrary
+                    print("✅ Converted 'photos' → .photoLibrary")
+                case "camera":
+                    photoUploadPicker = .camera
+                    print("✅ Converted 'camera' → .camera")
+                case "files":
+                    photoUploadPicker = .files
+                    print("✅ Converted 'files' → .files")
+                default:
+                    photoUploadPicker = .photoLibrary  // Default fallback
+                    print("⚠️ Unknown picker '\(pickerString)', defaulting to .photoLibrary")
+                }
+                print("✅ Final photoUploadPicker value: \(String(describing: photoUploadPicker))")
+            } else {
+                photoUploadPicker = .photoLibrary  // Default if not specified
+                print("⚠️ No picker type specified in UserDefaults, defaulting to photo library")
+            }
+            
+            print("✅ About to show PhotoUploadView with:")
+            print("   - sourceApp: \(photoUploadSourceApp)")
+            print("   - initialPicker: \(String(describing: photoUploadPicker))")
             
             // Show modal
             showPhotoUpload = true
@@ -275,12 +301,14 @@ struct TestYourSocialSkillsView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 defaults.set(false, forKey: "PendingPhotoUpload")
                 defaults.removeObject(forKey: "PhotoUploadRequestTime")
-                print("✅ Flag cleared after modal presented")
+                defaults.removeObject(forKey: "PhotoUploadPicker")  // ✅ Also clear picker type
+                print("✅ Flags cleared after modal presented")
             }
         } else {
             print("⚠️ Photo upload request too old, clearing...")
             defaults.set(false, forKey: "PendingPhotoUpload")
             defaults.removeObject(forKey: "PhotoUploadRequestTime")
+            defaults.removeObject(forKey: "PhotoUploadPicker")  // ✅ Clear picker type too
         }
     }
     

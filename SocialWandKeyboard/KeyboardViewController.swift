@@ -86,6 +86,9 @@ final class KeyboardViewController: KeyboardInputViewController {
     // Clipboard history
     private var clipboardHistoryHosting: UIHostingController<ClipboardHistoryView>?
     
+    // Upload options tray
+    private var uploadOptionsHosting: UIHostingController<UploadOptionsTray>?
+    
     // Tone/Length ID to Title mapping
     private let toneMapping: [String: String] = [
         "assertive": "Assertive",
@@ -173,6 +176,7 @@ final class KeyboardViewController: KeyboardInputViewController {
         case menuPicker
         case translatePicker
         case clipboardHistory
+        case uploadOptions
     }
     private var lastVisiblePicker: LastVisiblePicker = .none
     
@@ -740,6 +744,14 @@ final class KeyboardViewController: KeyboardInputViewController {
                 print("✅ Clipboard history already visible")
             }
             
+        case .uploadOptions:
+            if uploadOptionsHosting == nil || uploadOptionsHosting?.view.superview == nil {
+                print("↩️ Restoring upload options tray")
+                showUploadOptionsTray()
+            } else {
+                print("✅ Upload options tray already visible")
+            }
+            
         case .none:
             break
         }
@@ -889,6 +901,9 @@ final class KeyboardViewController: KeyboardInputViewController {
         if clipboardHistoryHosting != nil {
             hideClipboardHistory()
         }
+        if uploadOptionsHosting != nil {
+            hideUploadOptionsTray()
+        }
     }
     
     private func isAnyViewActive() -> Bool {
@@ -897,7 +912,8 @@ final class KeyboardViewController: KeyboardInputViewController {
                lengthPickerHosting != nil ||
                menuPickerHosting != nil ||
                translatePickerHosting != nil ||
-               clipboardHistoryHosting != nil
+               clipboardHistoryHosting != nil ||
+               uploadOptionsHosting != nil
     }
     
     // Retry the last failed operation
@@ -1016,7 +1032,8 @@ final class KeyboardViewController: KeyboardInputViewController {
                        (self?.lengthPickerHosting != nil) ||
                        (self?.menuPickerHosting != nil) ||
                        (self?.translatePickerHosting != nil) ||
-                       (self?.clipboardHistoryHosting != nil)
+                       (self?.clipboardHistoryHosting != nil) ||
+                       (self?.uploadOptionsHosting != nil)
             },
             onCloseSuggestions: { [weak self] in
                 if self?.suggestionsHosting != nil {
@@ -1036,6 +1053,9 @@ final class KeyboardViewController: KeyboardInputViewController {
                 }
                 if self?.clipboardHistoryHosting != nil {
                     self?.hideClipboardHistory()
+                }
+                if self?.uploadOptionsHosting != nil {
+                    self?.hideUploadOptionsTray()
                 }
             }
         )
@@ -2549,6 +2569,14 @@ final class KeyboardViewController: KeyboardInputViewController {
     private func handleUploadButtonTap() {
         print("🔵 Upload button tapped!")
         
+        // Toggle upload options tray if already visible
+        if uploadOptionsHosting != nil {
+            hideUploadOptionsTray()
+            updateToolbarButtonState(.upload, isActive: false)
+            print("✅ Upload options tray closed (toggle off)")
+            return
+        }
+
         // ✅ Close any active views before opening upload flow
         closeAnyActiveView()
         
@@ -2567,8 +2595,75 @@ final class KeyboardViewController: KeyboardInputViewController {
         
         print("✅ Has Full Access")
         
+        showUploadOptionsTray()
+    }
+
+    private func showUploadOptionsTray() {
+        guard uploadOptionsHosting == nil else { return }
+        
+        if suggestionsHosting != nil { hideSuggestionsView() }
+        if tonePickerHosting != nil { hideTonePicker() }
+        if lengthPickerHosting != nil { hideLengthPicker() }
+        if menuPickerHosting != nil { hideMenuPicker() }
+        if translatePickerHosting != nil { hideTranslatePicker() }
+        if clipboardHistoryHosting != nil { hideClipboardHistory() }
+        
+        let trayView = UploadOptionsTray(
+            onSelect: { [weak self] option in
+                self?.hideUploadOptionsTray()
+                self?.openUploadFlow(picker: option)
+            },
+            onCancel: { [weak self] in
+                self?.hideUploadOptionsTray()
+            }
+        )
+        
+        let hosting = UIHostingController(rootView: trayView)
+        hosting.view.backgroundColor = UIColor.clear
+        hosting.view.translatesAutoresizingMaskIntoConstraints = false
+        
+        addChild(hosting)
+        view.addSubview(hosting.view)
+        
+        NSLayoutConstraint.activate([
+            hosting.view.topAnchor.constraint(equalTo: view.topAnchor, constant: 44),
+            hosting.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            hosting.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            hosting.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+        
+        hosting.didMove(toParent: self)
+        uploadOptionsHosting = hosting
+        
+        view.bringSubviewToFront(hosting.view)
+        if let toolbar = toolbarHosting {
+            view.bringSubviewToFront(toolbar.view)
+        }
+        
+        lastVisiblePicker = .uploadOptions
+        print("✅ Upload options tray shown")
+    }
+    
+    private func hideUploadOptionsTray() {
+        guard let hosting = uploadOptionsHosting else { return }
+        
+        if !isRestoringPicker {
+            lastVisiblePicker = .none
+            updateToolbarButtonState(.upload, isActive: false)
+        }
+        
+        hosting.willMove(toParent: nil)
+        hosting.view.removeFromSuperview()
+        hosting.removeFromParent()
+        uploadOptionsHosting = nil
+        
+        print("✅ Upload options tray hidden")
+    }
+    
+    private func openUploadFlow(picker: UploadPickerOption) {
         guard let defaults = UserDefaults(suiteName: SharedConstants.appGroupID) else {
             print("❌ Failed to access App Group")
+            showUploadInstructionBanner()
             return
         }
         
@@ -2576,45 +2671,35 @@ final class KeyboardViewController: KeyboardInputViewController {
         defaults.set(true, forKey: "PendingPhotoUpload")
         defaults.set(sourceApp, forKey: "PhotoUploadSourceApp")
         defaults.set(Date(), forKey: "PhotoUploadRequestTime")
+        defaults.set(picker.rawValue, forKey: "PhotoUploadPicker")
         defaults.synchronize()
         
         print("✅ Saved photo upload request to App Group")
         print("   - PendingPhotoUpload: \(defaults.bool(forKey: "PendingPhotoUpload"))")
         print("   - PhotoUploadSourceApp: \(defaults.string(forKey: "PhotoUploadSourceApp") ?? "nil")")
         print("   - PhotoUploadRequestTime: \(defaults.object(forKey: "PhotoUploadRequestTime") ?? "nil")")
+        print("   - PhotoUploadPicker: \(defaults.string(forKey: "PhotoUploadPicker") ?? "nil")")
         
-        let urlString = "socialwand://upload?source=\(sourceApp)"
+        let urlString = "socialwand://upload?source=\(sourceApp)&picker=\(picker.rawValue)"
         guard let url = URL(string: urlString) else {
             print("❌ Invalid URL: \(urlString)")
             showUploadInstructionBanner()
             return
         }
         
-        print("🔵 Attempting to open URL via responder chain: \(url)")
-        
         var responder: UIResponder? = self
         var didOpen = false
         
         while let currentResponder = responder {
-            print("🔍 Checking responder: \(type(of: currentResponder))")
-            
             if let application = currentResponder as? UIApplication {
-                print("✅ Found UIApplication!")
-                
-                print("🚀 Calling open:options:completionHandler: on UIApplication")
                 application.open(url, options: [:], completionHandler: nil)
                 didOpen = true
-                
                 triggerHaptic(style: .medium)
-                
-                print("✅ App should be opening now via MODERN API!")
                 break
             }
             
             let openSelector = #selector(UIApplication.open(_:options:completionHandler:))
             if currentResponder.responds(to: openSelector) {
-                print("🔵 Found responder that responds to open:options:completionHandler:")
-                
                 let options: [UIApplication.OpenExternalURLOptionsKey : Any] = [:]
                 let performSelector = NSSelectorFromString("open:options:completionHandler:")
                 
@@ -2624,10 +2709,7 @@ final class KeyboardViewController: KeyboardInputViewController {
                     let function = unsafeBitCast(implementation, to: OpenURLFunction.self)
                     function(currentResponder, performSelector, url, options, nil)
                     didOpen = true
-                    
                     triggerHaptic(style: .medium)
-                    
-                    print("✅ Called open:options:completionHandler: on \(type(of: currentResponder))")
                     break
                 }
             }
@@ -2635,21 +2717,8 @@ final class KeyboardViewController: KeyboardInputViewController {
             responder = currentResponder.next
         }
         
-        if didOpen {
-            print("✅ SUCCESS - App opening via responder chain with MODERN API!")
-            print("📝 Keyboard will be killed by iOS - main app will handle photo selection")
-            // Clear active state after a short delay (app will open)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                self.updateToolbarButtonState(.upload, isActive: false)
-            }
-        } else {
-            print("❌ FAILED - Could not find UIApplication or suitable responder in chain")
-            print("⚠️ Showing fallback instruction banner")
+        if !didOpen {
             showUploadInstructionBanner()
-            // Clear active state if failed
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                self.updateToolbarButtonState(.upload, isActive: false)
-            }
         }
     }
     
@@ -3145,8 +3214,10 @@ final class KeyboardViewController: KeyboardInputViewController {
 
         let afterInput = textDocumentProxy.documentContextAfterInput ?? ""
         let shouldInsertSpace = afterInput.isEmpty || !(afterInput.first?.isWhitespace ?? false)
+        let trailingWhitespaceCount = context.reversed().prefix { $0.isWhitespace || $0.isNewline }.count
+        let deleteCount = lastWord.count + trailingWhitespaceCount
 
-        for _ in 0..<lastWord.count {
+        for _ in 0..<deleteCount {
             textDocumentProxy.deleteBackward()
         }
 
@@ -3235,5 +3306,115 @@ private final class CustomFeedbackService: FeedbackService {
         @unknown default:
             break
         }
+    }
+}
+
+// MARK: - Upload Options Tray
+
+private enum UploadPickerOption: String {
+    case photoLibrary = "photos"
+    case camera = "camera"
+    case files = "files"
+}
+
+private struct UploadOptionsTray: View {
+    let onSelect: (UploadPickerOption) -> Void
+    let onCancel: () -> Void
+    
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.35)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    onCancel()
+                }
+            
+            VStack {
+                Spacer()
+                
+                VStack(spacing: 12) {
+                    HStack {
+                        Text("Upload Context")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(.primary)
+                        Spacer()
+                        Button("Cancel") {
+                            onCancel()
+                        }
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(Color(hex: "8B5CF6"))
+                    }
+                    
+                    optionRow(
+                        icon: "photo.on.rectangle",
+                        title: "Photos",
+                        subtitle: "Choose from library"
+                    ) {
+                        onSelect(.photoLibrary)
+                    }
+                    
+                    optionRow(
+                        icon: "camera",
+                        title: "Camera",
+                        subtitle: "Take a photo"
+                    ) {
+                        onSelect(.camera)
+                    }
+                    
+                    optionRow(
+                        icon: "doc",
+                        title: "Files",
+                        subtitle: "Upload from device"
+                    ) {
+                        onSelect(.files)
+                    }
+                }
+                .padding(16)
+                .background(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(Color(UIColor.systemBackground))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                )
+                .padding(.horizontal, 14)
+                .padding(.bottom, 12)
+            }
+        }
+    }
+    
+    private func optionRow(icon: String, title: String, subtitle: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(Color(hex: "8B5CF6"))
+                    .frame(width: 40, height: 40)
+                    .background(Color(hex: "8B5CF6").opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.primary)
+                    Text(subtitle)
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.secondary)
+            }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color(UIColor.secondarySystemBackground))
+            )
+        }
+        .buttonStyle(.plain)
     }
 }

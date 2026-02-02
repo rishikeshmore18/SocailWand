@@ -272,12 +272,18 @@ private extension OnboardingHeroView {
 
         var terms = AttributedString("Terms of Service")
         terms.underlineStyle = .single
+        if let url = URL(string: "https://docs.google.com/document/d/1ky4F2b6VS6U-yxinBNJ0utUhc7rCA70l/edit?usp=sharing&ouid=108118613855142229853&rtpof=true&sd=true") {
+            terms.link = url
+        }
 
         var conjunction = AttributedString(" and ")
         conjunction.foregroundColor = Color.secondary
 
         var privacy = AttributedString("Privacy Policy")
         privacy.underlineStyle = .single
+        if let url = URL(string: "https://docs.google.com/document/d/15MMBXRiCT2feCImbWmQXAPF_FyIdRMj9/edit?usp=sharing&ouid=108118613855142229853&rtpof=true&sd=true") {
+            privacy.link = url
+        }
 
         var combined = prefix
         combined.append(terms)

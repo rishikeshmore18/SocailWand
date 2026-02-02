@@ -8,12 +8,11 @@
 
 /* Begin PBXBuildFile section */
 		30116A961FB97BC055B00B5B /* MacOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B08DCDF69DFF4A0D0983A00 /* MacOnboardingView.swift */; };
-		MACCLIPBOARDITEM00000002 /* ClipboardItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = MACCLIPBOARDITEM00000001 /* ClipboardItem.swift */; };
 		56850479DBF90CDE5CF9FD3A /* MacClipboardItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01555863F133F92BC0C692AF /* MacClipboardItem.swift */; };
-		A7C0D4E5F611223344556678 /* MacLocalClipboardItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0D4E5F611223344556677 /* MacLocalClipboardItem.swift */; };
 		6314F6030149334526C7C2DB /* MacAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F94278BB43337EABDFE3287 /* MacAppDelegate.swift */; };
 		723K0K0JPQ3POOE5MSGUQOGU /* Models/SuggestionsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = YBDTVRVHQQ0K1RDS1B7C5HCT /* Models/SuggestionsViewModel.swift */; };
 		A1B2C3D4E5F6001122334467 /* HotKeyConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6001122334466 /* HotKeyConfiguration.swift */; };
+		A7C0D4E5F611223344556678 /* MacLocalClipboardItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0D4E5F611223344556677 /* MacLocalClipboardItem.swift */; };
 		AAEDB357207D4EF515E89B72 /* HotKeyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17982BD18F10F0647F2C9861 /* HotKeyService.swift */; };
 		AC427FBDF84CA2892B07AEBE /* MacClipboardSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F79074426E8FF4358D8F8332 /* MacClipboardSyncService.swift */; };
 		B7994C623F7096C17D13AE31 /* SocialWandMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F57962C35E7C405B916B2590 /* SocialWandMacApp.swift */; };
@@ -50,6 +49,7 @@
 		HAPTICHELPERMAINTARGET001 /* SocialWandKeyboard/Helpers/HapticHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = R3ARDH4O1VLWM7X4APZIO9TR /* SocialWandKeyboard/Helpers/HapticHelper.swift */; };
 		L9NEPICKERVIEWSWIFT001 /* Views/LengthPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = L9NEPICKERVIEWSWIFT002 /* Views/LengthPickerView.swift */; };
 		M9NUPICKERVIEWSWIFT001 /* Views/MenuPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = M9NUPICKERVIEWSWIFT002 /* Views/MenuPickerView.swift */; };
+		MACCLIPBOARDITEM00000002 /* ClipboardItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = MACCLIPBOARDITEM00000001 /* ClipboardItem.swift */; };
 		P3R6DATAV1PXNOFVNZQ5IEY9 /* SocialWandKeyboard/Helpers/HapticHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = R3ARDH4O1VLWM7X4APZIO9TR /* SocialWandKeyboard/Helpers/HapticHelper.swift */; };
 		S9UGGESTIONBANNERVIEWSWIFT001 /* Views/SuggestionBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = S9UGGESTIONBANNERVIEWSWIFT002 /* Views/SuggestionBannerView.swift */; };
 		SHAREDSUGGESTIONDATASWIFT001 /* Models/SharedSuggestionData.swift in Sources */ = {isa = PBXBuildFile; fileRef = SHAREDSUGGESTIONDATASWIFT002 /* Models/SharedSuggestionData.swift */; };
@@ -86,8 +86,6 @@
 
 /* Begin PBXFileReference section */
 		01555863F133F92BC0C692AF /* MacClipboardItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacClipboardItem.swift; sourceTree = "<group>"; };
-		A7C0D4E5F611223344556677 /* MacLocalClipboardItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacLocalClipboardItem.swift; sourceTree = "<group>"; };
-		MACCLIPBOARDITEM00000001 /* ClipboardItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardItem.swift; sourceTree = "<group>"; };
 		143B768F1EBACDC5D04384D9 /* ClipboardPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardPanelController.swift; sourceTree = "<group>"; };
 		17982BD18F10F0647F2C9861 /* HotKeyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyService.swift; sourceTree = "<group>"; };
 		2D0E374ADDF42FE211D1794C /* SocialWandMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SocialWandMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -98,6 +96,7 @@
 		73CB1D70C800BA0679DCA255 /* ClipboardPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardPanelView.swift; sourceTree = "<group>"; };
 		747E60E61EE911F8E23AC765 /* MacOnboardingWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacOnboardingWindowController.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6001122334466 /* HotKeyConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyConfiguration.swift; sourceTree = "<group>"; };
+		A7C0D4E5F611223344556677 /* MacLocalClipboardItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacLocalClipboardItem.swift; sourceTree = "<group>"; };
 		B0C7F9FD47503BC998ACD43D /* SocialWandMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SocialWandMac.entitlements; sourceTree = "<group>"; };
 		C347D6762F14A316000748E6 /* TranslatePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TranslatePickerView.swift; path = Views/TranslatePickerView.swift; sourceTree = "<group>"; };
 		C3644D9C2EC6F6CE00B63C69 /* SocialWandKeyboard.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SocialWandKeyboard.entitlements; sourceTree = "<group>"; };
@@ -124,6 +123,7 @@
 		JBBCK1LSYFQYBZU27XCRVZ1E /* Services/KeyboardAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/KeyboardAIService.swift; sourceTree = "<group>"; };
 		L9NEPICKERVIEWSWIFT002 /* Views/LengthPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/LengthPickerView.swift; sourceTree = "<group>"; };
 		M9NUPICKERVIEWSWIFT002 /* Views/MenuPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/MenuPickerView.swift; sourceTree = "<group>"; };
+		MACCLIPBOARDITEM00000001 /* ClipboardItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardItem.swift; sourceTree = "<group>"; };
 		R3ARDH4O1VLWM7X4APZIO9TR /* SocialWandKeyboard/Helpers/HapticHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialWandKeyboard/Helpers/HapticHelper.swift; sourceTree = SOURCE_ROOT; };
 		S9UGGESTIONBANNERVIEWSWIFT002 /* Views/SuggestionBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/SuggestionBannerView.swift; sourceTree = "<group>"; };
 		SHAREDSUGGESTIONDATASWIFT002 /* Models/SharedSuggestionData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/SharedSuggestionData.swift; sourceTree = "<group>"; };

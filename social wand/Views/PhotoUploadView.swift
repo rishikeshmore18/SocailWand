@@ -21,9 +21,16 @@ struct PhotoUploadView: View {
     @State private var selectedPhotos: [UIImage] = []
     @State private var context: String = ""
     @State private var errorMessage: String?
-    @State private var showPhotoPicker = true
-    @State private var showAddMorePicker = false
+    @State private var showPhotoPicker = false
     @State private var showMaxPhotosAlert = false
+    @State private var showUploadOptions = false
+    @State private var pendingUploadSource: UploadSource?
+    @State private var pendingUploadIsAddMore = false
+    @State private var showCameraPicker = false
+    @State private var showFilePicker = false
+    @State private var capturedPhoto: UIImage?
+    @State private var photoPickerMode: PhotoPickerMode = .initial
+    @State private var didAutoOpenPicker = false
     @State private var showProcessingOverlay = false
     @State private var processingOverlayDismiss: DispatchWorkItem?
     @State private var selectedTones: [String] = []
@@ -35,12 +42,14 @@ struct PhotoUploadView: View {
     @FocusState private var isContextFocused: Bool
     
     let sourceApp: String
+    let initialPicker: UploadSource?
     
     @Environment(\.dismiss) var dismiss
     
-    init(sourceApp: String) {
+    init(sourceApp: String, initialPicker: UploadSource? = nil) {
         self.sourceApp = sourceApp
         self.returnToApp = sourceApp.capitalized
+        self.initialPicker = initialPicker
     }
     
     // Tone ID to Title mapping
@@ -85,14 +94,6 @@ struct PhotoUploadView: View {
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showTonePicker) { tonePickerSheet }
             .sheet(isPresented: $showLengthPicker) { lengthPickerSheet }
-            .sheet(isPresented: $showAddMorePicker) {
-                PhotoPicker(
-                    selectedPhotos: $selectedPhotos,
-                    selectionLimit: max(0, 5 - selectedPhotos.count),
-                    append: true,
-                    onStartLoading: { startProcessingOverlay() }
-                )
-            }
             .alert("Max 5 photos", isPresented: $showMaxPhotosAlert) {
                 Button("OK", role: .cancel) {}
             } message: {
@@ -122,6 +123,13 @@ struct PhotoUploadView: View {
         case .success:       return "Success"
         }
     }
+    
+    private var isPickingPhotosState: Bool {
+        if case .pickingPhotos = state {
+            return true
+        }
+        return false
+    }
 
     private func loadSavedPreferences() {
         guard let defaults = UserDefaults(suiteName: SharedConstants.appGroupID) else {
@@ -141,34 +149,61 @@ struct PhotoUploadView: View {
     private var photoPickerView: some View {
         VStack {
             Spacer()
-            VStack(spacing: 16) {
-                ProgressView().scaleEffect(1.5)
-                Text("Opening photo picker...")
-                    .font(.system(size: 16))
-                    .foregroundColor(.secondary)
-            }
+            // ✅ ALWAYS show loading screen, NEVER show menu in main app
+            openingUploadView
             Spacer()
         }
         .onAppear {
-            print("📸 PhotoUploadView appeared - auto-opening picker")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                showPhotoPicker = true
+            print("📸 PhotoUploadView appeared")
+            print("   - initialPicker received: \(String(describing: initialPicker))")
+            // ✅ If no picker specified, default to photo library
+            let pickerToOpen = initialPicker ?? .photoLibrary
+            print("   - pickerToOpen (after fallback): \(pickerToOpen)")
+            if !didAutoOpenPicker {
+                didAutoOpenPicker = true
+                print("   - Calling handleUploadSource(\(pickerToOpen), isAddMore: false)")
+                handleUploadSource(pickerToOpen, isAddMore: false)
+            } else {
+                print("   - ⚠️ Skipping handleUploadSource (already opened)")
             }
         }
-        .sheet(isPresented: $showPhotoPicker) {
+        .sheet(isPresented: $showPhotoPicker, onDismiss: {
+            if initialPicker != nil, selectedPhotos.isEmpty, isPickingPhotosState {
+                dismiss()
+            }
+        }) {
             PhotoPicker(
                 selectedPhotos: $selectedPhotos,
-                selectionLimit: 5,
-                append: false,
+                selectionLimit: photoPickerMode == .initial ? 5 : max(0, 5 - selectedPhotos.count),
+                append: photoPickerMode == .addMore,
                 onStartLoading: { startProcessingOverlay() }
             )
+        }
+        .sheet(isPresented: $showCameraPicker) {
+            CameraPicker(
+                selectedPhoto: $capturedPhoto,
+                onCancel: { handlePickerCancelIfNeeded() }
+            )
+        }
+        .sheet(isPresented: $showFilePicker) {
+            FilePicker(
+                selectedPhotos: $selectedPhotos,
+                selectionLimit: max(0, 5 - selectedPhotos.count),
+                onStartLoading: { startProcessingOverlay() },
+                onCancel: { handlePickerCancelIfNeeded() }
+            )
+        }
+        .onChange(of: capturedPhoto) { _, newValue in
+            guard let photo = newValue else { return }
+            selectedPhotos.append(photo)
+            capturedPhoto = nil
         }
         .onChange(of: selectedPhotos) { oldValue, newValue in
             if newValue.isEmpty {
                 if !oldValue.isEmpty {
                 print("⚠️ PhotoUploadView: All photos removed, returning to picker")
                 state = .pickingPhotos
-                } else if !showPhotoPicker && !showAddMorePicker {
+                } else if !showPhotoPicker {
                 print("❌ PhotoUploadView: User canceled without selecting photos")
                 dismiss()
                 }
@@ -299,6 +334,35 @@ struct PhotoUploadView: View {
                 processingOverlayView
             }
         }
+        // ✅ ADD: Sheet modifiers for photo/camera/file pickers (needed for plus button to work)
+        .sheet(isPresented: $showPhotoPicker) {
+            PhotoPicker(
+                selectedPhotos: $selectedPhotos,
+                selectionLimit: photoPickerMode == .initial ? 5 : max(0, 5 - selectedPhotos.count),
+                append: photoPickerMode == .addMore,
+                onStartLoading: { startProcessingOverlay() }
+            )
+        }
+        .sheet(isPresented: $showCameraPicker) {
+            CameraPicker(
+                selectedPhoto: $capturedPhoto,
+                onCancel: { handlePickerCancelIfNeeded() }
+            )
+        }
+        .sheet(isPresented: $showFilePicker) {
+            FilePicker(
+                selectedPhotos: $selectedPhotos,
+                selectionLimit: max(0, 5 - selectedPhotos.count),
+                onStartLoading: { startProcessingOverlay() },
+                onCancel: { handlePickerCancelIfNeeded() }
+            )
+        }
+        .onChange(of: capturedPhoto) { _, newValue in
+            guard let photo = newValue else { return }
+            selectedPhotos.append(photo)
+            capturedPhoto = nil
+            stopProcessingOverlay()
+        }
     }
     
     // ⭐ FIXED: PREFERENCES CONTAINER (Using proper FlowLayout from Opus)
@@ -380,7 +444,7 @@ struct PhotoUploadView: View {
                     if selectedPhotos.count >= 5 {
                         showMaxPhotosAlert = true
                     } else {
-                        showAddMorePicker = true
+                        showUploadOptions = true
                     }
                 }) {
                     ZStack {
@@ -395,6 +459,26 @@ struct PhotoUploadView: View {
                 .opacity(selectedPhotos.count >= 5 ? 0.6 : 1.0)
             }
             .padding(.horizontal, 20)
+        }
+        .sheet(isPresented: $showUploadOptions) {
+            UploadOptionsMenu(
+                title: "Add More",
+                onSelect: { source in
+                    pendingUploadSource = source
+                    pendingUploadIsAddMore = true
+                    showUploadOptions = false
+                },
+                onCancel: { showUploadOptions = false }
+            )
+            .presentationDetents([.medium])
+        }
+        .onChange(of: showUploadOptions) { _, isPresented in
+            if !isPresented, let source = pendingUploadSource {
+                pendingUploadSource = nil
+                let isAddMore = pendingUploadIsAddMore
+                pendingUploadIsAddMore = false
+                handleUploadSource(source, isAddMore: isAddMore)
+            }
         }
     }
     
@@ -441,6 +525,49 @@ struct PhotoUploadView: View {
             withAnimation(.easeOut(duration: 0.2)) {
                 showProcessingOverlay = false
             }
+        }
+    }
+    
+    private var openingUploadView: some View {
+        VStack(spacing: 12) {
+            ProgressView().scaleEffect(1.2)
+            Text("Preparing upload...")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(.secondary)
+        }
+    }
+    
+    private enum PhotoPickerMode {
+        case initial
+        case addMore
+    }
+    
+    private func handleUploadSource(_ source: UploadSource, isAddMore: Bool) {
+        print("🎯 handleUploadSource called with source: \(source), isAddMore: \(isAddMore)")
+        
+        if selectedPhotos.count >= 5 {
+            showMaxPhotosAlert = true
+            print("⚠️ Max photos reached, showing alert")
+            return
+        }
+        
+        switch source {
+        case .photoLibrary:
+            print("✅ Opening photo library picker")
+            photoPickerMode = isAddMore ? .addMore : .initial
+            showPhotoPicker = true
+        case .camera:
+            print("✅ Opening camera picker")
+            showCameraPicker = true
+        case .files:
+            print("✅ Opening files picker")
+            showFilePicker = true
+        }
+    }
+    
+    private func handlePickerCancelIfNeeded() {
+        if selectedPhotos.isEmpty, initialPicker != nil, isPickingPhotosState {
+            dismiss()
         }
     }
     

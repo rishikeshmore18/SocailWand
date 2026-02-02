@@ -13,6 +13,7 @@ struct social_wandApp: App {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @State private var showPhotoUpload = false
     @State private var photoUploadSourceApp = "instagram"
+    @State private var photoUploadPicker: UploadSource? = nil
     @State private var uploadSessionID = UUID()  // NEW: Forces view recreation
     @State private var showSettings = false  // ✅ NEW: Track settings navigation
     @State private var showEmailCompose = false
@@ -37,7 +38,7 @@ struct social_wandApp: App {
                 handleURL(url)
             }
             .fullScreenCover(isPresented: $showPhotoUpload) {
-                PhotoUploadView(sourceApp: photoUploadSourceApp)
+                PhotoUploadView(sourceApp: photoUploadSourceApp, initialPicker: photoUploadPicker)
                     .id(uploadSessionID)  // Forces new instance on each upload
             }
             .fullScreenCover(isPresented: $showEmailCompose) {
@@ -64,8 +65,16 @@ struct social_wandApp: App {
             
             // Get source app
             photoUploadSourceApp = defaults.string(forKey: "PhotoUploadSourceApp") ?? "instagram"
+            if let picker = defaults.string(forKey: "PhotoUploadPicker") {
+                photoUploadPicker = uploadSource(from: picker)
+                print("✅ Read picker type: \(picker) → \(String(describing: photoUploadPicker))")
+                // ✅ DON'T remove picker here - let it be cleared after modal shows
+            } else {
+                photoUploadPicker = nil
+                print("⚠️ No picker type found, will use default")
+            }
             
-            // Clear the flag
+            // Clear the flags immediately (but picker cleanup happens after modal shows)
             defaults.set(false, forKey: "PendingPhotoUpload")
             defaults.removeObject(forKey: "PhotoUploadRequestTime")
             
@@ -77,10 +86,17 @@ struct social_wandApp: App {
             
             // Show photo upload
             showPhotoUpload = true
+            
+            // ✅ Clear picker flag after modal is shown (delayed to ensure view receives it)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                defaults.removeObject(forKey: "PhotoUploadPicker")
+                print("✅ Cleared PhotoUploadPicker flag after modal presented")
+            }
         } else {
             // Request too old, clear it
             defaults.set(false, forKey: "PendingPhotoUpload")
             defaults.removeObject(forKey: "PhotoUploadRequestTime")
+            defaults.removeObject(forKey: "PhotoUploadPicker")
         }
     }
     
@@ -127,12 +143,34 @@ struct social_wandApp: App {
             print("⚠️ No source parameter, defaulting to instagram")
         }
         
+        if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+           let queryItems = components.queryItems,
+           let pickerItem = queryItems.first(where: { $0.name == "picker" }),
+           let picker = pickerItem.value {
+            photoUploadPicker = uploadSource(from: picker)
+        } else {
+            photoUploadPicker = nil
+        }
+        
         // CRITICAL: Generate new session ID to force view recreation
         uploadSessionID = UUID()
         print("🔄 Generated new upload session: \(uploadSessionID)")
 
         print("🚀 Showing PhotoUploadView")
         showPhotoUpload = true
+    }
+
+    private func uploadSource(from rawValue: String) -> UploadSource? {
+        switch rawValue {
+        case "photos":
+            return .photoLibrary
+        case "camera":
+            return .camera
+        case "files":
+            return .files
+        default:
+            return nil
+        }
     }
 
     private func checkPendingEmailCompose() {

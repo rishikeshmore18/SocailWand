@@ -136,17 +136,34 @@ struct ClipboardPanelView: View {
                 .buttonStyle(PlainButtonStyle())
             }
 
-            if let message = viewModel.cloudStatusMessage, !message.isEmpty {
-                Text(message)
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.7))
-                    .padding(.vertical, 6)
-                    .padding(.horizontal, 10)
-                    .background(
+            // ✅ Static status row - always visible to prevent layout shifts
+            HStack {
+                if let message = viewModel.cloudStatusMessage, !message.isEmpty {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.7))
+                } else {
+                    // Invisible placeholder to maintain consistent height
+                    Text(" ")
+                        .font(.caption)
+                        .foregroundColor(.clear)
+                }
+                Spacer()
+            }
+            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .frame(height: 24) // Fixed height to prevent layout shifts
+            .background(
+                Group {
+                    if let message = viewModel.cloudStatusMessage, !message.isEmpty {
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .fill(Color.white.opacity(0.08))
-                    )
-            }
+                    } else {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.clear)
+                    }
+                }
+            )
 
             ScrollView {
                 LazyVStack(spacing: 10) {
@@ -183,7 +200,7 @@ struct ClipboardPanelView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.black.opacity(0.85))
+                .fill(Color.black)
         )
         .onAppear {
             MacClipboardSyncService.shared.setFetchMode(active: true)
@@ -206,8 +223,9 @@ private struct ClipRowView: View {
     private let highlightColor = Color(red: 0.545, green: 0.361, blue: 0.965)
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            HStack(spacing: 12) {
+        HStack(spacing: 12) {
+            // Main content area
+            Group {
                 if let image = clip.displayImage {
                     Image(nsImage: image)
                         .resizable()
@@ -222,22 +240,26 @@ private struct ClipRowView: View {
                         .foregroundColor(.white)
                 }
             }
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.white.opacity(0.08))
-            )
-
-            HStack(spacing: 6) {
+            
+            Spacer()
+            
+            // ✅ Icons inside the clip - Vertical column on the right with blur backgrounds
+            VStack(spacing: 6) {
+                // Bookmark icon - Top right
                 Button(action: onToggleBookmark) {
                     Image(systemName: clip.isBookmarked ? "bookmark.fill" : "bookmark")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(clip.isBookmarked ? highlightColor : .white.opacity(0.7))
-                        .padding(6)
+                        .foregroundColor(clip.isBookmarked ? highlightColor : .white.opacity(0.9))
+                        .frame(width: 28, height: 28)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(.ultraThinMaterial)
+                        )
+                        .shadow(color: Color.black.opacity(0.2), radius: 2, x: 0, y: 1)
                 }
                 .buttonStyle(PlainButtonStyle())
 
+                // Three dots menu - Bottom right
                 Menu {
                     Button("Apply") {
                         onSelect()
@@ -252,12 +274,22 @@ private struct ClipRowView: View {
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.7))
-                        .padding(6)
+                        .foregroundColor(.white.opacity(0.9))
+                        .frame(width: 28, height: 28)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(.ultraThinMaterial)
+                        )
+                        .shadow(color: Color.black.opacity(0.2), radius: 2, x: 0, y: 1)
                 }
                 .menuStyle(BorderlessButtonMenuStyle())
             }
-            .padding(8)
         }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.white.opacity(0.08))
+        )
     }
 }

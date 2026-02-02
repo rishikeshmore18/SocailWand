@@ -214,14 +214,49 @@ private struct ClipboardSavingSettingsView: View {
 
             Text(autoSaveClipboard
                  ? "Everything you copy will be saved to your Social Wand clipboard."
-                 : "Auto-save is off. Copied items won’t be added to your Social Wand clipboard.")
+                 : "Auto-save is off. Copied items won't be added to your Social Wand clipboard.")
                 .font(.caption)
                 .foregroundColor(.secondary)
 
             Spacer()
+            
+            // Legal links at the bottom
+            Text(legalAttributedText)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 16)
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+    
+    // Legal text with clickable links
+    private var legalAttributedText: AttributedString {
+        var prefix = AttributedString("By using this app, you agree to our ")
+        prefix.foregroundColor = .secondary
+
+        var terms = AttributedString("Terms of Service")
+        terms.underlineStyle = .single
+        if let url = URL(string: "https://docs.google.com/document/d/1ky4F2b6VS6U-yxinBNJ0utUhc7rCA70l/edit?usp=sharing&ouid=108118613855142229853&rtpof=true&sd=true") {
+            terms.link = url
+        }
+
+        var conjunction = AttributedString(" and ")
+        conjunction.foregroundColor = .secondary
+
+        var privacy = AttributedString("Privacy Policy")
+        privacy.underlineStyle = .single
+        if let url = URL(string: "https://docs.google.com/document/d/15MMBXRiCT2feCImbWmQXAPF_FyIdRMj9/edit?usp=sharing&ouid=108118613855142229853&rtpof=true&sd=true") {
+            privacy.link = url
+        }
+
+        var combined = prefix
+        combined.append(terms)
+        combined.append(conjunction)
+        combined.append(privacy)
+        return combined
     }
 }
 
@@ -262,9 +297,44 @@ private struct ClipboardHotkeySettingsView: View {
             .buttonStyle(.bordered)
 
             Spacer()
+            
+            // Legal links at the bottom
+            Text(legalAttributedText)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 16)
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+    
+    // Legal text with clickable links
+    private var legalAttributedText: AttributedString {
+        var prefix = AttributedString("By using this app, you agree to our ")
+        prefix.foregroundColor = .secondary
+
+        var terms = AttributedString("Terms of Service")
+        terms.underlineStyle = .single
+        if let url = URL(string: "https://docs.google.com/document/d/1ky4F2b6VS6U-yxinBNJ0utUhc7rCA70l/edit?usp=sharing&ouid=108118613855142229853&rtpof=true&sd=true") {
+            terms.link = url
+        }
+
+        var conjunction = AttributedString(" and ")
+        conjunction.foregroundColor = .secondary
+
+        var privacy = AttributedString("Privacy Policy")
+        privacy.underlineStyle = .single
+        if let url = URL(string: "https://docs.google.com/document/d/15MMBXRiCT2feCImbWmQXAPF_FyIdRMj9/edit?usp=sharing&ouid=108118613855142229853&rtpof=true&sd=true") {
+            privacy.link = url
+        }
+
+        var combined = prefix
+        combined.append(terms)
+        combined.append(conjunction)
+        combined.append(privacy)
+        return combined
     }
 }
 

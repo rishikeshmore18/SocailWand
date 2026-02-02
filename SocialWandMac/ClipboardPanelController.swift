@@ -45,8 +45,8 @@ final class ClipboardPanelController {
         panel.isFloatingPanel = true
         panel.level = .statusBar
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
+        panel.isOpaque = true
+        panel.backgroundColor = NSColor.black.withAlphaComponent(0.95)
         panel.hasShadow = true
         panel.standardWindowButton(.closeButton)?.isHidden = true
         panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
@@ -143,8 +143,19 @@ final class ClipboardPanelController {
 
     private func startEventMonitor() {
         stopEventMonitor()
-        eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            self?.close()
+        eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .keyDown]) { [weak self] event in
+            guard let self = self, self.panel?.isVisible == true else { return }
+            
+            // Handle ESC key to close panel
+            if event.type == .keyDown, event.keyCode == UInt16(kVK_Escape) {
+                self.close()
+                return
+            }
+            
+            // Handle mouse clicks to close panel
+            if event.type == .leftMouseDown || event.type == .rightMouseDown {
+                self.close()
+            }
         }
     }
 
