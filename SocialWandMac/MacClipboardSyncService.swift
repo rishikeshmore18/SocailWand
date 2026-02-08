@@ -21,6 +21,7 @@ final class MacClipboardSyncService {
     private let pendingDeletesKey = "CloudClipboardPendingDeletes"
     private let migrationFlagKey = "MacToUnifiedStorageMigrated"
     private let signatureCleanupFlagKey = "MacClipboardDidCleanupSignatures"
+    private let disableContentSignatureUploadKey = "CloudClipboardDisableContentSignatureUpload"
     
     private let container = CKContainer(identifier: "iCloud.rishi-more.social-wand")
     private let recordType = "ClipboardItem"
@@ -39,6 +40,11 @@ final class MacClipboardSyncService {
     private let fetchMinimumInterval: TimeInterval = 3
     private let fastFetchMinimumInterval: TimeInterval = 1.5
     private let userSaveBypassInterval: TimeInterval = 3
+    private let remoteClipboardSignatureWindow: TimeInterval = 10
+    private let remoteClipboardType = NSPasteboard.PasteboardType("com.apple.is-remote-clipboard")
+    private let recentRemoteQueue = DispatchQueue(label: "mac.clipboard.remote.signatures")
+    private var recentRemoteImageSignatures: [String: Date] = [:]
+    private var lastRemoteImageAt: Date?
 
     private init() {
         performMigrationIfNeeded()
@@ -72,20 +78,39 @@ final class MacClipboardSyncService {
         let typeList = pasteboard.types?.map { $0.rawValue } ?? []
         print("📋 Mac Pasteboard types: \(typeList)")
 
+        if !force,
+           pasteboard.types?.contains(remoteClipboardType) == true,
+           pasteboard.readObjects(forClasses: [NSImage.self], options: nil)?.isEmpty == false {
+            completion?(false)
+            return
+        }
+
         if let images = pasteboard.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage],
            let image = images.first {
+            if !force, shouldSuppressRemoteClipboardImage(signatureForImage(image), pasteboard: pasteboard) {
+                completion?(false)
+                return
+            }
             saveImageClip(image, force: force, completion: completion)
             return
         }
 
         if let imageData = pasteboard.data(forType: .tiff) ?? pasteboard.data(forType: .png),
            let image = NSImage(data: imageData) {
+            if !force, shouldSuppressRemoteClipboardImage(signatureForImage(image), pasteboard: pasteboard) {
+                completion?(false)
+                return
+            }
             saveImageClip(image, force: force, completion: completion)
             return
         }
 
         if let jpegData = pasteboard.data(forType: NSPasteboard.PasteboardType("public.jpeg")),
            let image = NSImage(data: jpegData) {
+            if !force, shouldSuppressRemoteClipboardImage(signatureForImage(image), pasteboard: pasteboard) {
+                completion?(false)
+                return
+            }
             saveImageClip(image, force: force, completion: completion)
             return
         }
@@ -96,6 +121,10 @@ final class MacClipboardSyncService {
         ) as? [URL],
            let url = fileURLs.first,
            let image = NSImage(contentsOf: url) {
+            if !force, shouldSuppressRemoteClipboardImage(signatureForImage(image), pasteboard: pasteboard) {
+                completion?(false)
+                return
+            }
             saveImageClip(image, force: force, completion: completion)
             return
         }
@@ -455,6 +484,7 @@ final class MacClipboardSyncService {
         let existingHash = clipsHash(existingClips)
         var merged = Dictionary(uniqueKeysWithValues: existingClips.map { ($0.id, $0) })
         let pendingUpserts = Set(loadPendingUpserts())
+        var newRemoteIDs = Set<String>()
 
         for remote in remoteClips {
             if let existing = merged[remote.id] {
@@ -463,9 +493,11 @@ final class MacClipboardSyncService {
                 }
                 if remote.modifiedAt >= existing.modifiedAt {
                     merged[remote.id] = remote
+                    newRemoteIDs.insert(remote.id)
                 }
             } else {
                 merged[remote.id] = remote
+                newRemoteIDs.insert(remote.id)
             }
         }
 
@@ -475,6 +507,7 @@ final class MacClipboardSyncService {
         if !repairedIDs.isEmpty {
             repairedIDs.forEach { enqueuePendingUpsert($0) }
         }
+        recordRecentRemoteImages(from: mergedClips, ids: newRemoteIDs)
 
         let dedupeResult = dedupeClipsBySignature(mergedClips)
         mergedClips = dedupeResult.clips
@@ -569,7 +602,7 @@ final class MacClipboardSyncService {
         for index in clips.indices {
             guard clips[index].type == .image else { continue }
             let signature = clips[index].contentSignature
-            if !signature.isEmpty, signature.hasPrefix("image:legacy:") == false {
+            if !signature.isEmpty, signature.hasPrefix("image:ahash:") {
                 continue
             }
             guard let filename = clips[index].imageFilename else { continue }
@@ -624,7 +657,9 @@ final class MacClipboardSyncService {
         record["isDeleted"] = clip.isDeleted as CKRecordValue
         record["timestamp"] = clip.timestamp as CKRecordValue
         record["modifiedAt"] = clip.modifiedAt as CKRecordValue
-        record["contentSignature"] = clip.contentSignature as CKRecordValue
+        if shouldUploadContentSignature, clip.contentSignature.isEmpty == false {
+            record["contentSignature"] = clip.contentSignature as CKRecordValue
+        }
 
         if clip.isDeleted {
             return record
@@ -722,7 +757,15 @@ final class MacClipboardSyncService {
             case .success:
                 completion?(true)
             case .failure(let error):
-                self?.logCloudKitError(error, context: "save")
+                guard let self else {
+                    completion?(false)
+                    return
+                }
+                if self.shouldRetryWithoutContentSignature(for: error, record: record) {
+                    completion?(false)
+                    return
+                }
+                self.logCloudKitError(error, context: "save")
                 completion?(false)
             }
         }
@@ -941,6 +984,51 @@ final class MacClipboardSyncService {
         return newImage
     }
 
+    private func shouldSuppressRemoteClipboardImage(_ signature: String?, pasteboard: NSPasteboard) -> Bool {
+        guard pasteboard.types?.contains(remoteClipboardType) == true else { return false }
+        let now = Date()
+        return recentRemoteQueue.sync {
+            pruneRecentRemoteImages(now: now)
+            if let signature, !signature.isEmpty,
+               let seenAt = recentRemoteImageSignatures[signature],
+               now.timeIntervalSince(seenAt) <= remoteClipboardSignatureWindow {
+                return true
+            }
+            if let lastRemoteImageAt,
+               now.timeIntervalSince(lastRemoteImageAt) <= remoteClipboardSignatureWindow {
+                return true
+            }
+            return false
+        }
+    }
+
+    private func recordRecentRemoteImages(from clips: [ClipboardItem], ids: Set<String>) {
+        guard !ids.isEmpty else { return }
+        let now = Date()
+        recentRemoteQueue.async { [weak self] in
+            guard let self else { return }
+            self.pruneRecentRemoteImages(now: now)
+            var didRecordImage = false
+            for clip in clips where ids.contains(clip.id) && clip.type == .image && !clip.isDeleted {
+                if !clip.contentSignature.isEmpty {
+                    self.recentRemoteImageSignatures[clip.contentSignature] = now
+                    didRecordImage = true
+                }
+            }
+            if didRecordImage {
+                self.lastRemoteImageAt = now
+            }
+        }
+    }
+
+    private func pruneRecentRemoteImages(now: Date) {
+        let cutoff = now.addingTimeInterval(-remoteClipboardSignatureWindow)
+        recentRemoteImageSignatures = recentRemoteImageSignatures.filter { $0.value >= cutoff }
+        if let lastRemoteImageAt, lastRemoteImageAt < cutoff {
+            self.lastRemoteImageAt = nil
+        }
+    }
+
     private func checkCloudAvailability(completion: @escaping (Bool) -> Void) {
         container.accountStatus { status, error in
             if let error {
@@ -956,9 +1044,44 @@ final class MacClipboardSyncService {
         }
     }
 
+    private var shouldUploadContentSignature: Bool {
+        guard let defaults = UserDefaults(suiteName: appGroupID) else { return true }
+        return defaults.bool(forKey: disableContentSignatureUploadKey) == false
+    }
+
+    private func disableContentSignatureUpload() {
+        guard let defaults = UserDefaults(suiteName: appGroupID) else { return }
+        defaults.set(true, forKey: disableContentSignatureUploadKey)
+    }
+
+    private func shouldRetryWithoutContentSignature(for error: Error, record: CKRecord) -> Bool {
+        guard let ckError = error as? CKError else { return false }
+        guard ckError.code == .serverRejectedRequest else { return false }
+        let message = ckError.localizedDescription.lowercased()
+        guard message.contains("contentsignature") else { return false }
+        guard record.object(forKey: "contentSignature") != nil else { return false }
+
+        disableContentSignatureUpload()
+        record["contentSignature"] = nil
+        updateCloudStatus(message: "CloudKit schema missing contentSignature. Deploy schema to Production to enable full sync.")
+        saveRecord(record, completion: nil)
+        return true
+    }
+
     private func logCloudKitError(_ error: Error, context: String) {
         if let ckError = error as? CKError {
             print("MacClipboardSync \(context) failed: \(ckError.code.rawValue) \(ckError.localizedDescription)")
+            if ckError.code == .serverRejectedRequest {
+                let message = ckError.localizedDescription.lowercased()
+                if message.contains("contentsignature") {
+                    updateCloudStatus(message: "CloudKit schema missing contentSignature. Deploy schema to Production to enable full sync.")
+                    return
+                }
+                if message.contains("production container") || message.contains("production schema") {
+                    updateCloudStatus(message: "CloudKit Production schema not deployed. Deploy schema in CloudKit Dashboard.")
+                    return
+                }
+            }
         } else {
             print("MacClipboardSync \(context) failed: \(error.localizedDescription)")
         }
@@ -989,11 +1112,57 @@ final class MacClipboardSyncService {
     }
 
     private func signatureForImage(_ image: NSImage) -> String? {
-        let normalized = normalizedImage(image)
-        let data = imageSignatureData(normalized) ?? normalizedImageData(normalized)
-        guard let data else { return nil }
-        let hash = SHA256.hash(data: data)
-        return "image:\(data.count):\(hash.hexString)"
+        guard let hash = averageHash(for: image) else { return nil }
+        return "image:ahash:\(hash)"
+    }
+
+    private func averageHash(for image: NSImage) -> String? {
+        let size = 8
+        let bytesPerRow = size
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+
+        guard let cgImage = cgImageForHash(from: image) else { return nil }
+        guard let context = CGContext(
+            data: nil,
+            width: size,
+            height: size,
+            bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else { return nil }
+
+        context.interpolationQuality = .low
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: size, height: size))
+
+        guard let data = context.data else { return nil }
+        let pixels = data.assumingMemoryBound(to: UInt8.self)
+        var sum = 0
+        for i in 0..<(size * size) {
+            sum += Int(pixels[i])
+        }
+        let average = UInt8(sum / (size * size))
+
+        var hash: UInt64 = 0
+        for i in 0..<(size * size) {
+            if pixels[i] > average {
+                hash |= (1 << UInt64(i))
+            }
+        }
+
+        return String(format: "%016llx", hash)
+    }
+
+    private func cgImageForHash(from image: NSImage) -> CGImage? {
+        var rect = CGRect(origin: .zero, size: image.size)
+        if let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) {
+            return cgImage
+        }
+        guard let tiff = image.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff) else {
+            return nil
+        }
+        return rep.cgImage
     }
 
     private func imageSignatureData(_ image: NSImage) -> Data? {
@@ -1059,10 +1228,10 @@ final class MacClipboardSyncService {
     private func fillMissingSignatures(in clips: inout [ClipboardItem]) -> Bool {
         var updated = false
         for index in clips.indices {
-            if !clips[index].contentSignature.isEmpty,
-               clips[index].contentSignature.hasPrefix("image:legacy:") == false {
-                continue
-            }
+            let signature = clips[index].contentSignature
+            let needsUpdate = signature.isEmpty
+                || (clips[index].type == .image && signature.hasPrefix("image:ahash:") == false)
+            guard needsUpdate else { continue }
             switch clips[index].type {
             case .text:
                 if let text = clips[index].textContent {
@@ -1074,8 +1243,8 @@ final class MacClipboardSyncService {
                       let directory = clipboardDirectory() else { break }
                 let url = directory.appendingPathComponent(filename)
                 if let image = NSImage(contentsOf: url),
-                   let signature = signatureForImage(image) {
-                    clips[index].contentSignature = signature
+                   let newSignature = signatureForImage(image) {
+                    clips[index].contentSignature = newSignature
                 } else {
                     clips[index].contentSignature = legacyImageSignature(filename)
                 }

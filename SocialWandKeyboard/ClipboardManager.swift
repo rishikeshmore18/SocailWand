@@ -366,11 +366,8 @@ class ClipboardManager {
     }
 
     private func signatureForImage(_ image: UIImage) -> String? {
-        let data = imageSignatureData(image)
-            ?? normalizedPngSignatureData(image)
-        guard let data else { return nil }
-        let hash = SHA256.hash(data: data)
-        return "image:\(data.count):\(hash.hexString)"
+        guard let hash = averageHash(for: image) else { return nil }
+        return "image:ahash:\(hash)"
     }
 
     private func imageSignatureData(_ image: UIImage) -> Data? {
@@ -411,6 +408,43 @@ class ClipboardManager {
             image.draw(in: CGRect(origin: .zero, size: CGSize(width: 32, height: 32)))
         }
         return output.pngData()
+    }
+
+    private func averageHash(for image: UIImage) -> String? {
+        guard let cgImage = normalizedCGImage(from: image) else { return nil }
+        let size = 8
+        let bytesPerRow = size
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+
+        guard let context = CGContext(
+            data: nil,
+            width: size,
+            height: size,
+            bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else { return nil }
+
+        context.interpolationQuality = .low
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: size, height: size))
+
+        guard let data = context.data else { return nil }
+        let pixels = data.assumingMemoryBound(to: UInt8.self)
+        var sum = 0
+        for i in 0..<(size * size) {
+            sum += Int(pixels[i])
+        }
+        let average = UInt8(sum / (size * size))
+
+        var hash: UInt64 = 0
+        for i in 0..<(size * size) {
+            if pixels[i] > average {
+                hash |= (1 << UInt64(i))
+            }
+        }
+
+        return String(format: "%016llx", hash)
     }
 
     private func normalizedCGImage(from image: UIImage) -> CGImage? {
@@ -462,10 +496,10 @@ class ClipboardManager {
     private func fillMissingSignatures(in clips: inout [ClipboardItem]) -> Bool {
         var updated = false
         for index in clips.indices {
-            if !clips[index].contentSignature.isEmpty,
-               clips[index].contentSignature.hasPrefix("image:legacy:") == false {
-                continue
-            }
+            let signature = clips[index].contentSignature
+            let needsUpdate = signature.isEmpty
+                || (clips[index].type == .image && signature.hasPrefix("image:ahash:") == false)
+            guard needsUpdate else { continue }
             switch clips[index].type {
             case .text:
                 if let text = clips[index].textContent {
@@ -477,8 +511,8 @@ class ClipboardManager {
                       let directory = clipboardDirectory() else { break }
                 let url = directory.appendingPathComponent(filename)
                 if let image = UIImage(contentsOfFile: url.path),
-                   let signature = signatureForImage(image) {
-                    clips[index].contentSignature = signature
+                   let newSignature = signatureForImage(image) {
+                    clips[index].contentSignature = newSignature
                 } else {
                     clips[index].contentSignature = "image:legacy:\(filename)"
                 }

@@ -320,9 +320,8 @@ class ClipboardManager {
     }
     
     private func signatureForImage(_ image: UIImage) -> String? {
-        guard let data = imageSignatureData(image) else { return nil }
-        let hash = SHA256.hash(data: data)
-        return "image:\(data.count):\(hash.hexString)"
+        guard let hash = averageHash(for: image) else { return nil }
+        return "image:ahash:\(hash)"
     }
     
     private func imageSignatureData(_ image: UIImage) -> Data? {
@@ -331,7 +330,7 @@ class ClipboardManager {
         let targetSize = CGSize(width: 32, height: 32)
         let bytesPerPixel = 4
         let bytesPerRow = Int(targetSize.width) * bytesPerPixel
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
         let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue
         
         guard let context = CGContext(
@@ -349,6 +348,43 @@ class ClipboardManager {
         
         guard let data = context.data else { return nil }
         return Data(bytes: data, count: bytesPerRow * Int(targetSize.height))
+    }
+
+    private func averageHash(for image: UIImage) -> String? {
+        guard let cgImage = normalizedCGImage(from: image) else { return nil }
+        let size = 8
+        let bytesPerRow = size
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+
+        guard let context = CGContext(
+            data: nil,
+            width: size,
+            height: size,
+            bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else { return nil }
+
+        context.interpolationQuality = .low
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: size, height: size))
+
+        guard let data = context.data else { return nil }
+        let pixels = data.assumingMemoryBound(to: UInt8.self)
+        var sum = 0
+        for i in 0..<(size * size) {
+            sum += Int(pixels[i])
+        }
+        let average = UInt8(sum / (size * size))
+
+        var hash: UInt64 = 0
+        for i in 0..<(size * size) {
+            if pixels[i] > average {
+                hash |= (1 << UInt64(i))
+            }
+        }
+
+        return String(format: "%016llx", hash)
     }
     
     private func normalizedCGImage(from image: UIImage) -> CGImage? {
@@ -454,18 +490,21 @@ class ClipboardManager {
     private func fillMissingSignatures(in clips: inout [ClipboardItem]) -> Bool {
         var didUpdate = false
         for index in clips.indices {
-            if clips[index].contentSignature.isEmpty {
-                if clips[index].type == .text, let text = clips[index].textContent {
-                    clips[index].contentSignature = signatureForText(text)
-                    didUpdate = true
-                } else if clips[index].type == .image, let imageFilename = clips[index].imageFilename,
-                          let imageURL = getImageURL(filename: imageFilename),
-                          let imageData = try? Data(contentsOf: imageURL),
-                          let image = UIImage(data: imageData),
-                          let signature = signatureForImage(image) {
-                    clips[index].contentSignature = signature
-                    didUpdate = true
-                }
+            let signature = clips[index].contentSignature
+            let needsUpdate = signature.isEmpty
+                || (clips[index].type == .image && signature.hasPrefix("image:ahash:") == false)
+            guard needsUpdate else { continue }
+
+            if clips[index].type == .text, let text = clips[index].textContent {
+                clips[index].contentSignature = signatureForText(text)
+                didUpdate = true
+            } else if clips[index].type == .image, let imageFilename = clips[index].imageFilename,
+                      let imageURL = getImageURL(filename: imageFilename),
+                      let imageData = try? Data(contentsOf: imageURL),
+                      let image = UIImage(data: imageData),
+                      let newSignature = signatureForImage(image) {
+                clips[index].contentSignature = newSignature
+                didUpdate = true
             }
         }
         return didUpdate

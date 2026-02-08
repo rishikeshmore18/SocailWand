@@ -66,6 +66,14 @@ final class HotKeyService {
     private func startEventTap() -> Bool {
         let mask = (1 << CGEventType.keyDown.rawValue)
         let callback: CGEventTapCallBack = { _, type, event, refcon in
+            if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                if let refcon {
+                    let service = Unmanaged<HotKeyService>.fromOpaque(refcon).takeUnretainedValue()
+                    service.reenableEventTap()
+                }
+                return Unmanaged.passUnretained(event)
+            }
+
             guard type == .keyDown,
                   let refcon,
                   let nsEvent = NSEvent(cgEvent: event) else {
@@ -97,6 +105,11 @@ final class HotKeyService {
         }
         CGEvent.tapEnable(tap: tap, enable: true)
         return true
+    }
+
+    private func reenableEventTap() {
+        guard let eventTap else { return }
+        CGEvent.tapEnable(tap: eventTap, enable: true)
     }
 
     private func matches(config: HotKeyConfiguration, eventConfig: HotKeyConfiguration) -> Bool {

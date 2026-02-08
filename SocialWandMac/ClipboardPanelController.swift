@@ -70,7 +70,8 @@ final class ClipboardPanelController {
             onToggleBookmark: { [weak self] clip in
                 MacClipboardSyncService.shared.toggleBookmark(id: clip.id)
             },
-            showSaveButton: !autoSaveEnabled,
+            showSaveButton: true,
+            autoSaveEnabled: autoSaveEnabled,
             onSave: { [weak self] in
                 self?.handleSave()
             },
@@ -154,6 +155,12 @@ final class ClipboardPanelController {
             
             // Handle mouse clicks to close panel
             if event.type == .leftMouseDown || event.type == .rightMouseDown {
+                if let panel = self.panel {
+                    let location = NSEvent.mouseLocation
+                    if panel.frame.contains(location) {
+                        return
+                    }
+                }
                 self.close()
             }
         }

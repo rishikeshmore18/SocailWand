@@ -21,6 +21,7 @@ final class CloudClipboardSyncService {
     private let pendingDeletesKey = "CloudClipboardPendingDeletes"
     private let migrationFlagKey = "CloudClipboardDidMigrateModifiedAt"
     private let signatureCleanupFlagKey = "CloudClipboardDidCleanupSignatures"
+    private let disableContentSignatureUploadKey = "CloudClipboardDisableContentSignatureUpload"
     private let maxTotalItems = 7
     private let recordType = "ClipboardItem"
 
@@ -36,13 +37,14 @@ final class CloudClipboardSyncService {
     private var lastFetchAt: Date?
     private var fetchMode: FetchMode = .normal
     private var lastUserSaveAt: Date?
-    private let fetchMinimumInterval: TimeInterval = 3
-    private let fastFetchMinimumInterval: TimeInterval = 1.5
+    private let fetchMinimumInterval: TimeInterval = 2
+    private let fastFetchMinimumInterval: TimeInterval = 1
     private let userSaveBypassInterval: TimeInterval = 3
 
     private init(container: CKContainer = CKContainer(identifier: "iCloud.rishi-more.social-wand")) {
         self.container = container
         self.database = container.privateCloudDatabase
+        resetContentSignatureUploadIfNeeded()
     }
 
     enum Availability {
@@ -316,7 +318,9 @@ final class CloudClipboardSyncService {
         record["timestamp"] = clip.timestamp as CKRecordValue
         record["modifiedAt"] = clip.modifiedAt as CKRecordValue
         record["isDeleted"] = clip.isDeleted as CKRecordValue
-        record["contentSignature"] = clip.contentSignature as CKRecordValue
+        if shouldUploadContentSignature, clip.contentSignature.isEmpty == false {
+            record["contentSignature"] = clip.contentSignature as CKRecordValue
+        }
 
         if clip.isDeleted {
             return record
@@ -414,6 +418,8 @@ final class CloudClipboardSyncService {
     // MARK: - Local Cache
 
     private func mergeRemoteClips(_ remoteClips: [ClipboardItem]) {
+        enableContentSignatureUploadIfAvailable(remoteClips)
+
         let local = loadLocalClips()
         let pendingUpserts = Set(loadPendingIDs(forKey: pendingUpsertsKey))
 
@@ -465,6 +471,27 @@ final class CloudClipboardSyncService {
             return $0.id < $1.id
         }
         saveLocalClips(mergedClips)
+    }
+
+    private func enableContentSignatureUploadIfAvailable(_ remoteClips: [ClipboardItem]) {
+        guard shouldUploadContentSignature == false else { return }
+        guard remoteClips.contains(where: { !$0.contentSignature.isEmpty }) else { return }
+
+        clearContentSignatureUploadDisableFlag()
+        enqueueSignatureBackfill()
+    }
+
+    private func clearContentSignatureUploadDisableFlag() {
+        guard let defaults = UserDefaults(suiteName: appGroupID) else { return }
+        defaults.set(false, forKey: disableContentSignatureUploadKey)
+    }
+
+    private func enqueueSignatureBackfill() {
+        let local = loadLocalClips()
+        let ids = local.filter { !$0.contentSignature.isEmpty }.map { $0.id }
+        guard !ids.isEmpty else { return }
+        ids.forEach { enqueueUpsert(id: $0) }
+        pushLocalChanges(requiresOpenAccess: false)
     }
 
     private func dedupeClipsBySignature(_ clips: [ClipboardItem]) -> (clips: [ClipboardItem], newlyDeleted: [ClipboardItem]) {
@@ -536,7 +563,7 @@ final class CloudClipboardSyncService {
         for index in clips.indices {
             guard clips[index].type == .image else { continue }
             let signature = clips[index].contentSignature
-            if !signature.isEmpty, signature.hasPrefix("image:legacy:") == false {
+            if !signature.isEmpty, signature.hasPrefix("image:ahash:") {
                 continue
             }
             guard let filename = clips[index].imageFilename else { continue }
@@ -572,11 +599,8 @@ final class CloudClipboardSyncService {
     }
 
     private func signatureForImage(_ image: UIImage) -> String? {
-        let data = imageSignatureData(image)
-            ?? normalizedPngSignatureData(image)
-        guard let data else { return nil }
-        let hash = SHA256.hash(data: data)
-        return "image:\(data.count):\(hash.hexString)"
+        guard let hash = averageHash(for: image) else { return nil }
+        return "image:ahash:\(hash)"
     }
 
     private func imageSignatureData(_ image: UIImage) -> Data? {
@@ -618,6 +642,43 @@ final class CloudClipboardSyncService {
             image.draw(in: CGRect(origin: .zero, size: CGSize(width: 32, height: 32)))
         }
         return output.pngData()
+    }
+
+    private func averageHash(for image: UIImage) -> String? {
+        guard let cgImage = normalizedCGImage(from: image) else { return nil }
+        let size = 8
+        let bytesPerRow = size
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+
+        guard let context = CGContext(
+            data: nil,
+            width: size,
+            height: size,
+            bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else { return nil }
+
+        context.interpolationQuality = .low
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: size, height: size))
+
+        guard let data = context.data else { return nil }
+        let pixels = data.assumingMemoryBound(to: UInt8.self)
+        var sum = 0
+        for i in 0..<(size * size) {
+            sum += Int(pixels[i])
+        }
+        let average = UInt8(sum / (size * size))
+
+        var hash: UInt64 = 0
+        for i in 0..<(size * size) {
+            if pixels[i] > average {
+                hash |= (1 << UInt64(i))
+            }
+        }
+
+        return String(format: "%016llx", hash)
     }
 
     private func normalizedCGImage(from image: UIImage) -> CGImage? {
@@ -802,9 +863,38 @@ final class CloudClipboardSyncService {
         return defaults?.bool(forKey: "KeyboardFullAccess") ?? false
     }
 
+    private var shouldUploadContentSignature: Bool {
+        guard let defaults = UserDefaults(suiteName: appGroupID) else { return true }
+        return defaults.bool(forKey: disableContentSignatureUploadKey) == false
+    }
+
+    private func disableContentSignatureUpload() {
+        guard let defaults = UserDefaults(suiteName: appGroupID) else { return }
+        defaults.set(true, forKey: disableContentSignatureUploadKey)
+    }
+
+    private func resetContentSignatureUploadIfNeeded() {
+        guard let defaults = UserDefaults(suiteName: appGroupID) else { return }
+        guard defaults.bool(forKey: disableContentSignatureUploadKey) else { return }
+        defaults.set(false, forKey: disableContentSignatureUploadKey)
+    }
+
+    private func isContentSignatureSchemaError(_ error: Error) -> Bool {
+        guard let ckError = error as? CKError else { return false }
+        guard ckError.code == .serverRejectedRequest else { return false }
+        let message = ckError.localizedDescription.lowercased()
+        return message.contains("contentsignature")
+    }
+
     private func logCloudKitError(_ error: Error, context: String) {
         if let ckError = error as? CKError {
             print("CloudClipboardSync \(context) failed: \(ckError.code.rawValue) \(ckError.localizedDescription)")
+            if isContentSignatureSchemaError(ckError) {
+                disableContentSignatureUpload()
+                if context.hasPrefix("save ") {
+                    pushLocalChanges(requiresOpenAccess: false)
+                }
+            }
         } else {
             print("CloudClipboardSync \(context) failed: \(error.localizedDescription)")
         }

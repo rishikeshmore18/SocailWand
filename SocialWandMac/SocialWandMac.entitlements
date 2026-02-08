@@ -15,9 +15,9 @@
 		<string>iCloud.rishi-more.social-wand</string>
 	</array>
 	<key>com.apple.developer.icloud-container-environment</key>
-	<string>Development</string>
+	<string>Production</string>
 	<key>aps-environment</key>
-	<string>development</string>
+	<string>production</string>
 	<key>com.apple.security.application-groups</key>
 	<array>
 		<string>group.com.rishimore.socialwand</string>

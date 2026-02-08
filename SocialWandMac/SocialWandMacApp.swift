@@ -148,7 +148,8 @@ private struct MacClipboardOverlay: View {
                     onToggleBookmark: { clip in
                         MacClipboardSyncService.shared.toggleBookmark(id: clip.id)
                     },
-                    showSaveButton: !autoSaveClipboard,
+                    showSaveButton: true,
+                    autoSaveEnabled: autoSaveClipboard,
                     onSave: {
                         MacClipboardSyncService.shared.saveFromPasteboard(force: true)
                     }

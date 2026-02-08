@@ -72,6 +72,7 @@ struct ClipboardPanelView: View {
     let onDelete: (MacClipboardItem) -> Void
     let onToggleBookmark: (MacClipboardItem) -> Void
     let showSaveButton: Bool
+    let autoSaveEnabled: Bool
     let onSave: (() -> Void)?
     let onClose: (() -> Void)?
 
@@ -81,6 +82,7 @@ struct ClipboardPanelView: View {
         onDelete: @escaping (MacClipboardItem) -> Void,
         onToggleBookmark: @escaping (MacClipboardItem) -> Void,
         showSaveButton: Bool = false,
+        autoSaveEnabled: Bool = true,
         onSave: (() -> Void)? = nil,
         onClose: (() -> Void)? = nil
     ) {
@@ -89,6 +91,7 @@ struct ClipboardPanelView: View {
         self.onDelete = onDelete
         self.onToggleBookmark = onToggleBookmark
         self.showSaveButton = showSaveButton
+        self.autoSaveEnabled = autoSaveEnabled
         self.onSave = onSave
         self.onClose = onClose
     }
@@ -115,25 +118,38 @@ struct ClipboardPanelView: View {
             }
 
             if showSaveButton, let onSave {
-                Button {
-                    onSave()
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "tray.and.arrow.down.fill")
-                            .font(.system(size: 14, weight: .semibold))
-                        Text("Save to Clipboard")
-                            .font(.system(size: 14, weight: .semibold))
-                        Spacer()
+                HStack(spacing: 10) {
+                    Button {
+                        onSave()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "tray.and.arrow.down.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                            Text("Save to Clipboard")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color.white.opacity(0.12))
+                        )
                     }
-                    .foregroundColor(.white)
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Color.white.opacity(0.12))
-                    )
+                    .buttonStyle(PlainButtonStyle())
+
+                    Spacer()
+
+                    Text(autoSaveEnabled ? "Auto‑save: On" : "Auto‑save: Off")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.7))
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color.white.opacity(0.08))
+                        )
                 }
-                .buttonStyle(PlainButtonStyle())
             }
 
             // ✅ Static status row - always visible to prevent layout shifts
