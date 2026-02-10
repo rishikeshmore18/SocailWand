@@ -25,7 +25,7 @@ final class MacClipboardSyncService {
     
     private let container = CKContainer(identifier: "iCloud.rishi-more.social-wand")
     private let recordType = "ClipboardItem"
-    private let maxTotalItems = 7
+    private let maxTotalItems = 25
 
     private enum FetchMode {
         case normal

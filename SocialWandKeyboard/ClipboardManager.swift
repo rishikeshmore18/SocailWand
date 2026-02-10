@@ -17,7 +17,7 @@ class ClipboardManager {
     
     private let appGroupID = "group.com.rishimore.socialwand"
     private let clipboardKey = "SavedClipboardItems"
-    private let maxTotalItems = 7  // Reduced from 15
+    private let maxTotalItems = 25
     
     private init() {
         migrateMissingSignaturesIfNeeded()

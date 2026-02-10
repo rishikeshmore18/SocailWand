@@ -22,7 +22,7 @@ final class CloudClipboardSyncService {
     private let migrationFlagKey = "CloudClipboardDidMigrateModifiedAt"
     private let signatureCleanupFlagKey = "CloudClipboardDidCleanupSignatures"
     private let disableContentSignatureUploadKey = "CloudClipboardDisableContentSignatureUpload"
-    private let maxTotalItems = 7
+    private let maxTotalItems = 25
     private let recordType = "ClipboardItem"
 
     private let container: CKContainer

@@ -19,7 +19,7 @@ struct ClipboardHistoryView: View {
     @State private var clips: [ClipboardItem] = []
     @State private var selectedID: String? = nil
     @State private var highlightedID: String? = nil
-    @State private var loadedThumbnails: [String: UIImage] = [:]
+    @StateObject private var thumbnailStore = ClipboardThumbnailStore()
     @State private var refreshTimer: Timer? = nil
     @State private var highlightWorkItem: DispatchWorkItem? = nil
 
@@ -28,6 +28,7 @@ struct ClipboardHistoryView: View {
     @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
+        let _ = thumbnailStore.refreshToken
         GeometryReader { geometry in
             let breakpoint = KeyboardBreakpoint.from(height: geometry.size.height)
             let metrics = ClipboardMetrics.metrics(for: breakpoint)
@@ -44,11 +45,14 @@ struct ClipboardHistoryView: View {
                         ScrollViewReader { proxy in
                             ScrollView {
                                 VStack(spacing: metrics.cardSpacing) {
-                                    ForEach(clips) { clip in
+                                    ForEach(Array(clips.enumerated()), id: \.element.id) { index, clip in
                                         clipCard(clip: clip, metrics: metrics)
                                             .id(clip.id)
                                             .onAppear {
-                                                loadThumbnailIfNeeded(for: clip)
+                                                loadThumbnailIfNeeded(for: clip, at: index)
+                                            }
+                                            .onDisappear {
+                                                releaseThumbnailIfNeeded(for: clip)
                                             }
                                     }
                                 }
@@ -91,13 +95,11 @@ struct ClipboardHistoryView: View {
             }
         }
         .onDisappear {
-            // Clear thumbnails from RAM when view closes
-            loadedThumbnails.removeAll()
+            thumbnailStore.clear()
             CloudClipboardSyncService.shared.setFetchMode(active: false)
             stopRefreshTimer()
             highlightWorkItem?.cancel()
             highlightWorkItem = nil
-            print("🧹 Cleared \(loadedThumbnails.count) thumbnails from RAM")
         }
     }
     
@@ -145,7 +147,7 @@ struct ClipboardHistoryView: View {
                             HStack(spacing: 10) {
                                 // Lazy-loaded thumbnail
                                 if let thumbFilename = clip.thumbnailFilename,
-                                   let thumbnail = loadedThumbnails[thumbFilename] {
+                                   let thumbnail = thumbnailStore.image(for: thumbFilename) {
                                     Image(uiImage: thumbnail)
                                         .resizable()
                                         .scaledToFill()
@@ -345,15 +347,36 @@ struct ClipboardHistoryView: View {
     }
     
     private func loadThumbnailIfNeeded(for clip: ClipboardItem) {
+        loadThumbnailIfNeeded(for: clip, at: nil)
+    }
+
+    private func loadThumbnailIfNeeded(for clip: ClipboardItem, at index: Int?) {
         guard clip.type == .image,
-              let thumbFilename = clip.thumbnailFilename,
-              loadedThumbnails[thumbFilename] == nil else { return }
-        
-        // Lazy load thumbnail
-        if let thumbnail = ClipboardManager.shared.loadThumbnail(filename: thumbFilename) {
-            loadedThumbnails[thumbFilename] = thumbnail
-            print("🖼️ Loaded thumbnail: \(thumbFilename)")
+              let thumbFilename = clip.thumbnailFilename else { return }
+
+        thumbnailStore.loadIfNeeded(filename: thumbFilename) {
+            ClipboardManager.shared.loadThumbnail(filename: thumbFilename)
         }
+
+        guard let index else { return }
+        prefetchThumbnails(startingAt: index + 1, count: 2)
+    }
+
+    private func prefetchThumbnails(startingAt index: Int, count: Int) {
+        guard index < clips.count else { return }
+        let end = min(index + count, clips.count)
+        for clip in clips[index..<end] where clip.type == .image {
+            guard let thumbFilename = clip.thumbnailFilename else { continue }
+            thumbnailStore.loadIfNeeded(filename: thumbFilename) {
+                ClipboardManager.shared.loadThumbnail(filename: thumbFilename)
+            }
+        }
+    }
+
+    private func releaseThumbnailIfNeeded(for clip: ClipboardItem) {
+        guard clip.type == .image,
+              let thumbFilename = clip.thumbnailFilename else { return }
+        thumbnailStore.remove(filename: thumbFilename)
     }
     
     private func toggleSelection(for id: String) {
@@ -475,6 +498,71 @@ private struct ClipboardMetrics {
                 bottomPadding: 120, buttonWidth: 120, buttonHeight: 46, buttonSpacing: 12
             )
         }
+    }
+}
+
+final class ClipboardThumbnailStore: ObservableObject {
+    private let cache = NSCache<NSString, UIImage>()
+    private let lock = NSLock()
+    private var inFlight = Set<String>()
+    @Published private(set) var refreshToken = UUID()
+
+    init() {
+        cache.countLimit = 8
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleMemoryWarning),
+            name: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    func image(for filename: String) -> UIImage? {
+        cache.object(forKey: filename as NSString)
+    }
+
+    func loadIfNeeded(filename: String, loader: @escaping () -> UIImage?) {
+        if cache.object(forKey: filename as NSString) != nil {
+            return
+        }
+        lock.lock()
+        if inFlight.contains(filename) {
+            lock.unlock()
+            return
+        }
+        inFlight.insert(filename)
+        lock.unlock()
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let image = loader()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.lock.lock()
+                self.inFlight.remove(filename)
+                self.lock.unlock()
+                if let image {
+                    self.cache.setObject(image, forKey: filename as NSString)
+                    self.refreshToken = UUID()
+                }
+            }
+        }
+    }
+
+    func remove(filename: String) {
+        cache.removeObject(forKey: filename as NSString)
+    }
+
+    func clear() {
+        cache.removeAllObjects()
+        refreshToken = UUID()
+    }
+
+    @objc private func handleMemoryWarning() {
+        clear()
     }
 }
 

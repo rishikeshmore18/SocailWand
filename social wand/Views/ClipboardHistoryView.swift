@@ -204,29 +204,20 @@ struct ClipboardHistoryView: View {
             }
             .buttonStyle(.plain)
             
-            // Floating controls (left column)
+            // Bookmark (top-right)
             VStack {
                 HStack {
+                    Spacer()
                     Button(action: { toggleBookmark(clip) }) {
                         floatingIcon(
                             systemName: clip.isBookmarked ? "bookmark.fill" : "bookmark"
                         )
                     }
                     .buttonStyle(.plain)
-                    Spacer()
                 }
                 .padding(10)
                 
                 Spacer()
-                
-                HStack {
-                    Button(action: { toggleSelection(for: clip.id) }) {
-                        floatingIcon(systemName: "ellipsis")
-                    }
-                    .buttonStyle(.plain)
-                    Spacer()
-                }
-                .padding(10)
             }
             .allowsHitTesting(true)
             
